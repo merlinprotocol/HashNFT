@@ -1,0 +1,15 @@
+node_modules
+secrets.json
+coverage
+coverage.json
+typechain
+settings.json
+
+#Hardhat files
+cache
+artifacts
+
+package-lock.json
+deployments
+.env
+.merlin
