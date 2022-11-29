@@ -46,10 +46,5 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545",
     },
-    rinkeby: {
-      url: "https://rinkeby.infura.io/v3/" + process.env.infura_apikey,
-      chainId: 4,
-      accounts: [process.env.privateKey],
-    },
   }
 };
