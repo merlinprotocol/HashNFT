@@ -5,6 +5,8 @@ interface IRiskControl {
     
     function deliver(uint256 day, uint256 amount) external returns (uint256);
 
+    function deliverRecords(uint256) external returns(uint256);
+
     function mintAllowed() external view returns (bool);
 
     function deliverAllowed() external view returns (bool);

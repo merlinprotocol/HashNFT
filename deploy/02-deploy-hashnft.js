@@ -85,15 +85,18 @@ async function func() {
   const nftType = 1
   await hashNFT.connect(user).functions['mint(address,uint8,string)'](user.address, nftType, "")
 
-  const now = (await hashNFT.provider.getBlock()).timestamp
   const collectionPeriodDuration = (await riskControl.collectionPeriodDuration()).toNumber()
-  await network.provider.send('evm_setNextBlockTimestamp', [now + collectionPeriodDuration])
+  await network.provider.send('evm_setNextBlockTimestamp', [startTime_ + collectionPeriodDuration])
   await oracle.complementDailyEarnings(10, [ethers.utils.parseEther('0.0023')], [1])
 
   await wbtcToken.connect(issuer).approve(hashNFT.address, ethers.constants.MaxUint256)
-  await network.provider.send('evm_setNextBlockTimestamp', [now + collectionPeriodDuration + ONE_DAY])
-  await hashNFT.connect(issuer).deliver()
-
+  await network.provider.send('evm_setNextBlockTimestamp', [startTime_ + collectionPeriodDuration + ONE_DAY * 2])
+  const tokenId = 0
+  await hashNFT.connect(user).setUser(tokenId, user.address, startTime_ + collectionPeriodDuration + ONE_DAY * 3)
+  
+  const mtokenAddress = await hashNFT.mtoken()
+  const mtoken = await ethers.getContractAt('mToken', mtokenAddress)
+  await mtoken.connect(user).claims(hashNFT.address, tokenId)
 
 }
 

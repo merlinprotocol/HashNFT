@@ -43,7 +43,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
 
     IOracle public priceOracle;
 
-    mapping(uint256 => uint256) public deliverRecords;
+    mapping(uint256 => uint256) public override deliverRecords;
 
     mapping(uint256 => uint256) public liquidations;
 

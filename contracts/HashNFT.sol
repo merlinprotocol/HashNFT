@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./interfaces/IEarningsOracle.sol";
 import "./interfaces/IRiskControl.sol";
+import "./interfaces/IHashNFT.sol";
 import "./mToken.sol";
 import "./ERC4907a.sol";
 
@@ -15,7 +16,7 @@ enum NftType {
     GOLD
 }
 
-contract HashNFT is ERC4907a {
+contract HashNFT is IHashNFT, ERC4907a {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
@@ -76,6 +77,11 @@ contract HashNFT is ERC4907a {
 
     modifier onlyIssuer() {
         require(msg.sender == _issuer, "HashNFT: msg not from issuer");
+         _;
+    }
+
+    modifier onlymToken() {
+        require(msg.sender == address(mtoken), "HashNFT: msg not from mToken");
         _;
     }
 
@@ -95,7 +101,7 @@ contract HashNFT is ERC4907a {
         _counter.increment();
 
         nftHashTypes[tokenId] = _nftType;
-        mtoken.addPayee(address(this), tokenId, _hashrate);
+        mtoken.addPayee(tokenId, _hashrate);
         sold = sold.add(_hashrate);
 
         emit HashNFTMint(msg.sender, _to, tokenId, _hashrate, note);
@@ -126,7 +132,7 @@ contract HashNFT is ERC4907a {
     function _createmToken() internal returns(address) {
         mToken mt = new mToken(address(payment));
         for (uint32 i=0;i<_counter.current();++i) {
-            mt.addPayee(address(this), i, hashRateOf(nftHashTypes[i]));
+            mt.addPayee(i, hashRateOf(nftHashTypes[i]));
         }
         return address(mt);
     }
@@ -139,20 +145,32 @@ contract HashNFT is ERC4907a {
      *
      * emit a {Deliver} event.
      */
-    function deliver()
-        external
-        onlyIssuer
-    {
+    function deliver() external override onlymToken {
         require(riskControl.deliverAllowed(),  "HashNFT: risk not allowed to deliver");
+        for (uint256 desDay = riskControl.dayNow() - 1;;) {
+            if (0 == riskControl.deliverRecords(desDay)) {
+                deliverInternal(desDay);
+            }
+            
+            if (desDay == 0) {
+                break;
+            }
+            desDay--;
+        }
+    }
+
+    function deliverInternal(uint256 desDay) internal {
         (uint256 round, uint256 amount) = oracle.lastRound();
         require(round != 0, "!round");
+        if (amount == 0) {
+            return;
+        }
+
         amount = sold.mul(amount);
-        require(amount > 0, "zero deliver");
         // TODO... add online coefficient
         IERC20 funds = mtoken.funds();
-        funds.transferFrom(msg.sender, address(mtoken), amount);
+        funds.transferFrom(_issuer, address(mtoken), amount);
 
-        uint256 desDay = riskControl.dayNow() - 1;
         riskControl.deliver(desDay, amount);
         emit Deliver(desDay, amount);
     }
@@ -200,4 +218,5 @@ contract HashNFT is ERC4907a {
         _issuer = new_;
         emit IssuerHasChanged(old, new_);
     }
+
 }

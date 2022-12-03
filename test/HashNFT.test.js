@@ -2,6 +2,7 @@
 // Load dependencies
 const { expect } = require('chai')
 const { BigNumber } = require('ethers')
+const { ethers } = require('hardhat')
 
 describe('HashNFT', function () {
   let deployer
@@ -66,23 +67,24 @@ describe('HashNFT', function () {
   // })
 
   describe('mint (address, uint256)', function () {
+    const hashType = 1
     it('revert not allowed', async function () {
       await expect(
-        hashnft.functions['mint(address,uint8,string)'](testAddr.address, 1, note)
+        hashnft.functions['mint(address,uint8,string)'](testAddr.address, hashType, note)
       ).to.be.revertedWith("HashNFT: risk not allowed to mint")
     })
 
     it('revert zero address', async function () {
       await network.provider.send('evm_setNextBlockTimestamp', [startTime])
       await expect(
-        hashnft.functions['mint(address,uint8,string)'](ethers.constants.AddressZero, 1, note)
+        hashnft.functions['mint(address,uint8,string)'](ethers.constants.AddressZero, hashType, note)
       ).to.be.revertedWith("HashNFT: mint to the zero address")
     })
 
     it('revert insufficient payment', async function () {
       await network.provider.send('evm_setNextBlockTimestamp', [startTime])
       await expect(
-        hashnft.functions['mint(address,uint8,string)'](testAddr.address, 1, note)
+        hashnft.functions['mint(address,uint8,string)'](testAddr.address, hashType, note)
       ).to.be.revertedWith("ERC20: insufficient allowance")
     })
 
@@ -173,25 +175,19 @@ describe('HashNFT', function () {
     })
   })
 
-  describe('setIssuer (address)', function () {
-    it('revert sender not issuer', async function () {
-      await expect(
-        hashnft.setIssuer(testAddr.address)
-      ).to.be.revertedWith("HashNFT: msg not from issuer")
-    })
-
-    it('success', async function () {
-      await expect(
-        hashnft.connect(issuer).setIssuer(testAddr.address)
-      ).to.emit(hashnft, 'IssuerHasChanged')
-        .withArgs(issuer.address, testAddr.address)
-    })
-  })
-
   describe('deliver ()', function () {
     it('revert not allowed', async function () {
+      const hashType = 1
+      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
+      await usdt.approve(hashnft.address, ethers.constants.MaxUint256)
+      await hashnft.functions['mint(address,uint8,string)'](deployer.address, hashType, note)
+      const tokenId = 0
+      const mtokenAddress = await hashnft.mtoken()
+      const mtoken = await ethers.getContractAt('mToken', mtokenAddress)
+      let duration = await riskControl.collectionPeriodDuration()
+      await hashnft.setUser(tokenId, deployer.address, startTime + duration.toNumber())
       await expect(
-        hashnft.connect(issuer).deliver()
+        mtoken.claims(hashnft.address, tokenId)
       ).to.be.revertedWith("HashNFT: risk not allowed to deliver")
     })
 
@@ -200,7 +196,7 @@ describe('HashNFT', function () {
       await network.provider.send('evm_setNextBlockTimestamp', [startTime + duration.toNumber()])
       await expect(
         hashnft.deliver()
-      ).to.be.revertedWith("HashNFT: msg not from issuer")
+      ).to.be.revertedWith("HashNFT: msg not from mToken")
     })
   })
 })

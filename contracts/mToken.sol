@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "double-contracts/contracts/4907/ERC4907.sol";
+import "./interfaces/IHashNFT.sol";
 
 
 struct NFTInfo {
@@ -29,11 +30,14 @@ contract mToken is Context, Ownable {
     mapping(string => uint256) private _shares;
     NFTInfo[] private _payees;
 
+    IHashNFT private hashNFT;
+
     /**
      * @dev Creates an instance of `mToken`
      */
     constructor(address funds_) {
         funds = IERC20(funds_);
+        hashNFT = IHashNFT(msg.sender);
     }
 
     receive() external payable virtual {
@@ -49,10 +53,10 @@ contract mToken is Context, Ownable {
     }
 
     function addPayee(
-        address nft,
         uint256 tokenId,
         uint256 shares_
     ) public onlyOwner {
+        address nft = msg.sender;
         require(
             IERC721(nft).ownerOf(tokenId) != address(0),
             "mToken: account is the zero address"
@@ -86,15 +90,16 @@ contract mToken is Context, Ownable {
     }
 
     function claims(address nft, uint256 tokenId) public {
+        address account = IERC4907(nft).userOf(tokenId);
         require(
-            // IERC721(nft).ownerOf(tokenId) == msg.sender,
-            IERC4907(nft).userOf(tokenId) == msg.sender,
+            account == msg.sender,
             "mToken: caller is not the nft's owner"
         );
         require(
             _shares[_toString(nft, tokenId)] > 0,
             "mToken: tokenId has no shares"
         );
+        hashNFT.deliver();
         uint256 totalReceived = funds.balanceOf(address(this)) +
             _fundsTotalClaimed;
         uint256 payment = _pending(
@@ -107,7 +112,6 @@ contract mToken is Context, Ownable {
         require(payment != 0, "mToken: tokenId is not due payment");
         _fundsClaimed[_toString(nft, tokenId)] += payment;
         _fundsTotalClaimed += payment;
-        address account = IERC721(nft).ownerOf(tokenId);
         SafeERC20.safeTransfer(funds, account, payment);
         emit FundsClaimed(funds, account, payment);
     }
