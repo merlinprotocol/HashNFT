@@ -10,13 +10,12 @@ import "./interfaces/IHashNFT.sol";
 import "./mToken.sol";
 import "./ERC4907a.sol";
 
-enum NftType {
-    IRON,
-    SILVER,
-    GOLD
-}
-
-contract HashNFT is IHashNFT, ERC4907a {
+contract HashNFT is IHashNFT, ERC4907a { 
+    enum Trait {
+        BASIC,
+        STANDARD,
+        PREMIUM
+    }
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
@@ -25,154 +24,90 @@ contract HashNFT is IHashNFT, ERC4907a {
         address indexed payer,
         address indexed to,
         uint256 tokenId,
-        uint256 hashrate,
+        Trait trait,
         string note
     );
-    event IssuerHasChanged(address from, address to);
-    event Deliver(uint256 day, uint256 amount);
-
-    IERC20 public immutable payment;
 
     IRiskControl public riskControl;
 
     uint256 public immutable total;
 
-    IEarningsOracle public immutable oracle;
+    address public immutable vault; 
 
-    uint256 public sold;
+    uint256 public sold = 0;
 
     mToken public mtoken;
 
     Counters.Counter private _counter;
 
-    string private _defaultURI;
+    string private constant _defaultURI = "https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb";
 
     string private _bURI;
 
-    address private _issuer;
+    mapping(Trait => uint256) public traitHashrates;
 
-    mapping(uint256 => NftType) public nftHashTypes;
+    mapping(Trait => uint256) public traitPrices;
+
+    mapping(uint256 => Trait) public traits;
 
     constructor(
-        uint256 total_,
-        address payment_,
+        uint256 _total,
         address rewards,
-        address issuer_,
         address risk,
-        address oracle_
-    )
-        ERC4907a("Hash NFT", "HASHNFT")
-    {
-        payment = IERC20(payment_);
-        oracle = IEarningsOracle(oracle_);
+        uint256[] memory prices,
+        address _vault
+    ) ERC4907a("Hash NFT", "HASHNFT") {
         riskControl = IRiskControl(risk);
-        total = total_;
+        require(prices[1] >= riskControl.price().mul(prices[0]), "HashNFT: trait price error");
+        traitHashrates[Trait.BASIC] = prices[0];
+        traitPrices[Trait.BASIC] = prices[1];
+        require(prices[3] >= riskControl.price().mul(prices[2]), "HashNFT: trait price error");
+        traitHashrates[Trait.STANDARD] = prices[2];
+        traitPrices[Trait.STANDARD] = prices[3];
+        require(prices[5] >= riskControl.price().mul(prices[4]), "HashNFT: trait price error");
+        traitHashrates[Trait.PREMIUM] = prices[4];
+        traitPrices[Trait.PREMIUM] = prices[5];
 
-        sold = 0;
-        _defaultURI = "https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb";
+        vault = _vault;
+        total = _total;
 
         mtoken = new mToken(rewards);
-        _issuer = issuer_;
     }
 
-    modifier onlyIssuer() {
-        require(msg.sender == _issuer, "HashNFT: msg not from issuer");
-         _;
+    function dispatcher() external view override returns (address) {
+        return address(mtoken);
     }
 
-    modifier onlymToken() {
-        require(msg.sender == address(mtoken), "HashNFT: msg not from mToken");
-        _;
-    }
-
-    function mint(address _to, NftType _nftType, string memory note) public returns (uint256) 
-    {
-        uint256 _hashrate = hashRateOf(_nftType);
+    function mint(
+        address _to,
+        Trait _nftType,
+        string memory note
+    ) public returns (uint256) {
+        uint256 hashrate = traitHashrates[_nftType];
         require(_to != address(0), "HashNFT: mint to the zero address");
-        require(sold + _hashrate <= total, "HashNFT: insufficient hashrates");
-        require(riskControl.mintAllowed(),  "HashNFT: risk not allowed to mint");
+        require(sold.add(hashrate) <= total, "HashNFT: insufficient hashrates");
+        require(riskControl.mintAllowed(), "HashNFT: risk not allowed to mint");
 
-        uint256 cost = riskControl.price() * _hashrate;
-        payment.transferFrom(msg.sender, address(riskControl), cost);
+        uint256 amount = traitPrices[_nftType];
+        uint256 cost = riskControl.price().mul(hashrate);
+        riskControl.funds().transferFrom(msg.sender, address(riskControl), cost);
+        riskControl.funds().transferFrom(msg.sender, vault, amount.sub(cost));
 
         uint256 tokenId = _counter.current();
 
         _safeMint(_to, tokenId);
         _counter.increment();
 
-        nftHashTypes[tokenId] = _nftType;
-        mtoken.addPayee(tokenId, _hashrate);
-        sold = sold.add(_hashrate);
-
-        emit HashNFTMint(msg.sender, _to, tokenId, _hashrate, note);
+        mtoken.addPayee(tokenId, hashrate);
+        sold = sold.add(hashrate);
+        traits[tokenId] = _nftType;
+        emit HashNFTMint(msg.sender, _to, tokenId, _nftType, note);
         return tokenId;
     }
 
-    function liquidate() external {
-        address mt = _createmToken();
-        riskControl.liquidate(msg.sender, mt);
-    }
-
-    function tokenHashRate(uint256 tokenId) public view returns(uint256) {
-        require(_exists(tokenId), "!exist");
-        return hashRateOf(nftHashTypes[tokenId]);
-    }
-
-    function hashRateOf(NftType nftType) public pure returns(uint256) {
-        if (nftType == NftType.IRON) {
-            return 1;
-        } else if (nftType == NftType.SILVER) {
-            return 5;
-        } else if (nftType == NftType.GOLD) {
-            return 15;
-        }
-        revert("!nft type");
-    }
-
-    function _createmToken() internal returns(address) {
-        mToken mt = new mToken(address(payment));
-        for (uint32 i=0;i<_counter.current();++i) {
-            mt.addPayee(i, hashRateOf(nftHashTypes[i]));
-        }
-        return address(mt);
-    }
-
-    /**
-     * @dev Delivery of hash power mining proceeds
-     *
-     * Requirements:
-     *
-     *
-     * emit a {Deliver} event.
-     */
-    function deliver() external override onlymToken {
-        require(riskControl.deliverAllowed(),  "HashNFT: risk not allowed to deliver");
-        for (uint256 desDay = riskControl.dayNow() - 1;;) {
-            if (0 == riskControl.deliverRecords(desDay)) {
-                deliverInternal(desDay);
-            }
-            
-            if (desDay == 0) {
-                break;
-            }
-            desDay--;
-        }
-    }
-
-    function deliverInternal(uint256 desDay) internal {
-        (uint256 round, uint256 amount) = oracle.lastRound();
-        require(round != 0, "!round");
-        if (amount == 0) {
-            return;
-        }
-
-        amount = sold.mul(amount);
-        // TODO... add online coefficient
-        IERC20 funds = mtoken.funds();
-        funds.transferFrom(_issuer, address(mtoken), amount);
-
-        riskControl.deliver(desDay, amount);
-        emit Deliver(desDay, amount);
+    function hashRate(uint256 tokenId) public view returns (uint256) {
+        require(_exists(tokenId), "HashNFT: tokenId not exist");
+        return traitHashrates[traits[tokenId]];
     }
 
     /**
@@ -201,22 +136,6 @@ contract HashNFT is IHashNFT, ERC4907a {
      */
     function _baseURI() internal view override returns (string memory) {
         return _bURI;
-    }
-
-    /**
-     * @dev Set a new issuer address.
-     *
-     * Requirements:
-     *
-     * - `new_` cannot be the zero address.
-     * - the caller must be the issuer.
-     *
-     * Emits a {ChangeIssuer} event.
-     */
-    function setIssuer(address new_) external onlyIssuer {
-        address old = _issuer;
-        _issuer = new_;
-        emit IssuerHasChanged(old, new_);
     }
 
 }
