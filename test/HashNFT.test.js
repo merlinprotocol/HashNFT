@@ -6,26 +6,47 @@ const { ethers } = require('hardhat')
 
 describe('HashNFT', function () {
   let deployer
-  let root
-  let notRoot
+  let admin
+  let notAdmin
   let issuer
   let buyer
-  let testAddr
+  let test
+  let vault
 
   let usdt
   let wbtc
   let hashnft
-  let oracle
   let riskControl
+  let prices
 
   const USDTDecimals = 18
-  const basePrice = ethers.utils.parseUnits('100', USDTDecimals)
-  const total = 10 * 1000
+  const WBTCDecimals = 8
+  const taxPercent = 500
+  const optionPercent = 500
+  const cost = ethers.utils.parseUnits('18', USDTDecimals)
+  const total = 3 * 1000
   const note = "mrc"
   let startTime
 
+  async function gotoCollection() {
+    let timepoint = startTime
+    await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+    await ethers.provider.send("evm_mine")
+  }
+
+  async function gotoOutCollection() {
+    let timepoint = startTime + (await riskControl.collectionPeriodDuration()).toNumber()
+    await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+    await ethers.provider.send("evm_mine")
+  }
+
+  async function mintHashNFT(to, typ) {
+    await gotoCollection()
+    await hashnft.connect(buyer).payForMint(to, typ, note)
+  }
+
   beforeEach(async function () {
-    [deployer, root, notRoot, issuer, buyer, testAddr] = await ethers.getSigners()
+    [deployer, admin, notAdmin, issuer, buyer, test, vault] = await ethers.getSigners()
     const ERC20Contract = await ethers.getContractFactory("MyERC20")
     usdt = await ERC20Contract.deploy("USDT", "usdt", ethers.utils.parseUnits('100000000', USDTDecimals), USDTDecimals)
     await usdt.deployed()
@@ -33,170 +54,179 @@ describe('HashNFT', function () {
     wbtc = await ERC20Contract.deploy("Wrapped Bitcoin", "wbtc", ethers.utils.parseUnits('100000000', 8), 8)
     await wbtc.deployed()
 
-    const OracleContract = await ethers.getContractFactory("MockEarningsOracle")
-    oracle = await OracleContract.deploy()
+    const MockOracleContract = await ethers.getContractFactory('MockOracle')
+    const BTCPrice = ethers.utils.parseUnits('38500', WBTCDecimals)
+    let mockOracle = await MockOracleContract.deploy(BTCPrice)
+    await mockOracle.deployed()
+
+    const mockEarningsOralceContract = await ethers.getContractFactory("MockEarningsOracle")
+    let mockEarningsOralce = await mockEarningsOralceContract.deploy()
+    await mockEarningsOralce.deployed()
 
     const bestBlock = await ethers.provider.getBlock()
     startTime = (Math.floor(bestBlock.timestamp / 3600 / 24) + 1) * 3600 * 24
     const RiskContract = await ethers.getContractFactory("RiskControl")
-    riskControl = await RiskContract.deploy(startTime, basePrice, usdt.address, issuer.address, oracle.address)
+    riskControl = await RiskContract.connect(admin).deploy(startTime, cost, optionPercent, taxPercent, usdt.address, wbtc.address, issuer.address, mockOracle.address, mockEarningsOralce.address)
+    await riskControl.deployed()
 
+    prices = [
+      BigNumber.from(10),
+      ethers.utils.parseUnits('269', USDTDecimals),
+      BigNumber.from(20),
+      ethers.utils.parseUnits('499', USDTDecimals),
+      BigNumber.from(40),
+      ethers.utils.parseUnits('999', USDTDecimals)
+    ]
     const HashNFTContract = await ethers.getContractFactory('HashNFT')
-    hashnft = await HashNFTContract.deploy(total, usdt.address, wbtc.address, issuer.address, riskControl.address, oracle.address)
+    hashnft = await HashNFTContract.connect(admin).deploy(total, wbtc.address, riskControl.address, prices, vault.address)
+    await hashnft.deployed()
+
+    await riskControl.connect(admin).setHashNFT(hashnft.address)
+
+    let totalSupply = await usdt.totalSupply()
+    await usdt.transfer(buyer.address, totalSupply)
+    await usdt.connect(buyer).approve(hashnft.address, totalSupply)
   })
 
   describe('public member variables', function () {
     it('immutable', async function () {
-      expect(await hashnft.total()).to.equal(total)
-      expect(await hashnft.payment()).to.equal(usdt.address)
-      expect(await hashnft.oracle()).to.equal(oracle.address)
       expect(await hashnft.riskControl()).to.equal(riskControl.address)
+      expect(await hashnft.total()).to.equal(total)
+      expect(await hashnft.vault()).to.equal(vault.address)
 
-      // expect(await hashnft.basePrice()).to.equal(basePrice)
-      // let expected = ethers.utils.parseUnits('5', USDTDecimals)
-      // expect(await hashnft.tax()).to.equal(expected)
-      // expect(await hashnft.optionFunds()).to.equal(expected)
+      expect(await hashnft.traitHashrates(0)).to.equal(prices[0])
+      expect(await hashnft.traitPrices(0)).to.equal(prices[1])
+      expect(await hashnft.traitHashrates(1)).to.equal(prices[2])
+      expect(await hashnft.traitPrices(1)).to.equal(prices[3])
+      expect(await hashnft.traitHashrates(2)).to.equal(prices[4])
+      expect(await hashnft.traitPrices(2)).to.equal(prices[5])
     })
   })
 
-  // describe('price ()', function () {
-  //   it('success', async function () {
-  //     let expected = ethers.utils.parseUnits('110', USDTDecimals)
-  //     expect(await hashnft.price()).to.equal(expected)
-  //   })
-  // })
+  describe('dispatcher () address', function () {
+    it('success', async function () {
+      expect(await hashnft.dispatcher()).to.equal(await hashnft.mtoken())
+    })
+  })
 
-  describe('mint (address, uint256)', function () {
+  describe('hashRateOf (uint256) address', function () {
+    it('revert tokenId not exist', async function () {
+      await expect(
+        hashnft.hashRateOf(0)
+      ).to.be.revertedWith('HashNFT: tokenId not exist')
+    })
+
+    it('success', async function () {
+      await mintHashNFT(test.address, 1)
+      expect(await hashnft.hashRateOf(0)).to.be.equal(20)
+    })
+  })
+
+  describe('tokenURI (uint256) string', function () {
+    it('revert tokenId not exist', async function () {
+      await expect(
+        hashnft.tokenURI(0)
+      ).to.be.revertedWith('ERC721URIStorage: URI query for nonexistent token')
+    })
+
+    it('success', async function () {
+      await mintHashNFT(test.address, 1)
+      expect(await hashnft.tokenURI(0)).to.be.equal("https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb")
+    })
+  })
+
+  describe('updateURI (uint256, string) string', function () {
+    const uri = 'https://gateway.pinata.cloud/ipfs/QmYc58gMPveZjw66tKyJ47gmDWavvV7qN4PG2YneNUqHcM'
+    it('revert insufficient permissions', async function () {
+      await expect(
+        hashnft.connect(notAdmin).updateURI(0, uri)
+      ).to.be.revertedWith('Ownable: caller is not the owner')
+    })
+
+    it('revert tokenId not exist', async function () {
+      await expect(
+        hashnft.updateURI(0, uri)
+      ).to.be.revertedWith('ERC721URIStorage: URI query for nonexistent token')
+    })
+
+    it('success', async function () {
+      await mintHashNFT(test.address, 1)
+      await hashnft.connect(admin).updateURI(0, uri)
+      expect(await hashnft.tokenURI(0)).to.be.equal(uri)
+    })
+
+    it('revert already updated', async function () {
+      await mintHashNFT(test.address, 1)
+      await hashnft.connect(admin).updateURI(0, uri)
+      await expect(
+        hashnft.connect(admin).updateURI(0, uri)
+      ).to.be.revertedWith('HashNFT: token URI already updated')
+    })
+  })
+
+  describe('payForMint (address, uint256, string)', function () {
     const hashType = 1
     it('revert not allowed', async function () {
       await expect(
-        hashnft.functions['mint(address,uint8,string)'](testAddr.address, hashType, note)
+        hashnft.connect(buyer).payForMint(test.address, hashType, note)
+      ).to.be.revertedWith("HashNFT: risk not allowed to mint")
+    })
+
+    it('revert not allowed 2', async function () {
+      await gotoOutCollection()
+      await expect(
+        hashnft.connect(buyer).payForMint(test.address, hashType, note)
       ).to.be.revertedWith("HashNFT: risk not allowed to mint")
     })
 
     it('revert zero address', async function () {
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
+      await gotoCollection()
       await expect(
-        hashnft.functions['mint(address,uint8,string)'](ethers.constants.AddressZero, hashType, note)
+        hashnft.connect(buyer).payForMint(ethers.constants.AddressZero, hashType, note)
       ).to.be.revertedWith("HashNFT: mint to the zero address")
     })
 
-    it('revert insufficient payment', async function () {
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
-      await expect(
-        hashnft.functions['mint(address,uint8,string)'](testAddr.address, hashType, note)
-      ).to.be.revertedWith("ERC20: insufficient allowance")
-    })
-
     it('success', async function () {
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
-      const hashType = 2
-      const hashrate = await hashnft.hashRateOf(hashType)
+      await gotoCollection()
+      const trait = 2
+      const hashrate = await hashnft.traitHashrates(trait)
       const tokenId = 0
-      const amount = (await riskControl.price()).mul(hashrate)
+      const amount = await hashnft.traitPrices(trait)
 
-      await usdt.transfer(buyer.address, amount)
-      await usdt.connect(buyer).approve(hashnft.address, amount)
       await expect(
-        hashnft.connect(buyer).functions['mint(address,uint8,string)'](buyer.address, hashType, note)
+        hashnft.connect(buyer).payForMint(buyer.address, trait, note)
       ).to.emit(hashnft, 'HashNFTMint')
-        .withArgs(buyer.address, buyer.address, tokenId, hashrate, note)
+        .withArgs(buyer.address, buyer.address, tokenId, trait, note)
 
       expect(await hashnft.sold()).to.equal(hashrate)
       expect(await hashnft.ownerOf(tokenId)).to.equal(buyer.address)
+      let costs = (await riskControl.price()).mul(hashrate)
+      expect(await usdt.balanceOf(riskControl.address)).to.equal(costs)
+      expect(await usdt.balanceOf(vault.address)).to.equal(amount.sub(costs))
     })
   })
 
-  describe('tokenURI (uint256)', function () {
-    async function mintNFT() {
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
-      const hashType = 2
-      const hashrate = await hashnft.hashRateOf(hashType)
-      const amount = (await riskControl.price()).mul(hashrate)
-
-      await usdt.transfer(buyer.address, amount)
-      await usdt.connect(buyer).approve(hashnft.address, amount)
-      await hashnft.connect(buyer).functions['mint(address,uint8,string)'](buyer.address, hashType, note)
-    }
-
-    it('revert not exist', async function () {
-      const tokenId = 0
-      await expect(
-        hashnft.tokenURI(tokenId)
-      ).to.be.revertedWith("ERC721Metadata: URI query for nonexistent token")
-    })
-
+  describe('sell all', function () {
     it('success', async function () {
-      await mintNFT()
-      const tokenId = 0
-      const uri = "https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb"
-      expect(await hashnft.tokenURI(tokenId)).to.equal(uri)
-    })
-  })
+      await gotoCollection()
 
-  describe('setBaseURI', function () {
-    async function mintNFT() {
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
-      const hashType = 2
-      const hashrate = await hashnft.hashRateOf(hashType)
-      const amount = (await riskControl.price()).mul(hashrate)
-
-      await usdt.transfer(buyer.address, amount)
-      await usdt.connect(buyer).approve(hashnft.address, amount)
-      await hashnft.connect(buyer).functions['mint(address,uint8,string)'](buyer.address, hashType, note)
-    }
-
-    it('revert not owner', async function () {
-      const tokenId = 0
-      const uri = "https://ipfs.io/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb"
-      await expect(
-        hashnft.connect(notRoot).setBaseURI(uri)
-      ).to.be.revertedWith("Ownable: caller is not the owner")
-    })
-
-    it('success', async function () {
-      const tokenId = 0
-      await mintNFT()
-      const uri = "https://ipfs.io/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb/"
-      await hashnft.setBaseURI(uri)
-      expect(await hashnft.tokenURI(tokenId)).to.equal(`${uri}${tokenId}`)
-    })
-  })
-
-  describe('liquidate', function () {
-    it('revert liquidate while stage is not correct', async function () {
-      await expect(hashnft.liquidate()).to.revertedWith('Stages: not the right stage')
-    })
-
-    it('success', async function() {
-      const duration = await riskControl.collectionPeriodDuration()
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime + duration.toNumber()])
-      await hashnft.liquidate()
-    })
-  })
-
-  describe('deliver ()', function () {
-    it('revert not allowed', async function () {
-      const hashType = 1
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime])
-      await usdt.approve(hashnft.address, ethers.constants.MaxUint256)
-      await hashnft.functions['mint(address,uint8,string)'](deployer.address, hashType, note)
-      const tokenId = 0
-      const mtokenAddress = await hashnft.mtoken()
-      const mtoken = await ethers.getContractAt('mToken', mtokenAddress)
-      let duration = await riskControl.collectionPeriodDuration()
-      await hashnft.setUser(tokenId, deployer.address, startTime + duration.toNumber())
-      await expect(
-        mtoken.claims(hashnft.address, tokenId)
-      ).to.be.revertedWith("HashNFT: risk not allowed to deliver")
-    })
-
-    it('revert sender not issuer', async function () {
-      let duration = await riskControl.collectionPeriodDuration()
-      await network.provider.send('evm_setNextBlockTimestamp', [startTime + duration.toNumber()])
-      await expect(
-        hashnft.deliver()
-      ).to.be.revertedWith("HashNFT: msg not from mToken")
+      let tokenId = 0
+      let total = await hashnft.total()
+      let sold = await hashnft.sold()
+      let amount = BigNumber.from(0)
+      while (total.sub(sold).toNumber() >= 40) {
+        let trait = Math.floor(Math.random() * 10) % 3
+        await expect(
+          hashnft.connect(buyer).payForMint(buyer.address, trait, note)
+        ).to.emit(hashnft, 'HashNFTMint')
+          .withArgs(buyer.address, buyer.address, tokenId, trait, note)
+        tokenId += 1
+        amount = amount.add(await hashnft.traitPrices(trait))
+        sold = await hashnft.sold()
+      }
+      let costs = (await riskControl.price()).mul(sold)
+      expect(await usdt.balanceOf(riskControl.address)).to.equal(costs)
+      expect(await usdt.balanceOf(vault.address)).to.equal(amount.sub(costs))
     })
   })
 })

@@ -28,7 +28,7 @@ contract HashNFT is IHashNFT, ERC4907a {
         string note
     );
 
-    IRiskControl public riskControl;
+    IRiskControl public immutable riskControl;
 
     uint256 public immutable total;
 
@@ -42,7 +42,7 @@ contract HashNFT is IHashNFT, ERC4907a {
 
     string private constant _defaultURI = "https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb";
 
-    string private _bURI;
+    mapping(uint256 => string) private _tokenURIs;
 
     mapping(Trait => uint256) public traitHashrates;
 
@@ -78,7 +78,7 @@ contract HashNFT is IHashNFT, ERC4907a {
         return address(mtoken);
     }
 
-    function mint(
+    function payForMint(
         address _to,
         Trait _nftType,
         string memory note
@@ -97,6 +97,7 @@ contract HashNFT is IHashNFT, ERC4907a {
 
         _safeMint(_to, tokenId);
         _counter.increment();
+        _setTokenURI(tokenId, _defaultURI);
 
         mtoken.addPayee(tokenId, hashrate);
         sold = sold.add(hashrate);
@@ -105,12 +106,12 @@ contract HashNFT is IHashNFT, ERC4907a {
         return tokenId;
     }
 
-    function hashRate(uint256 tokenId) public view returns (uint256) {
+    function hashRateOf(uint256 tokenId) public view returns (uint256) {
         require(_exists(tokenId), "HashNFT: tokenId not exist");
         return traitHashrates[traits[tokenId]];
     }
 
-    /**
+     /**
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId)
@@ -120,22 +121,42 @@ contract HashNFT is IHashNFT, ERC4907a {
         override
         returns (string memory)
     {
-        string memory _tokenURI = super.tokenURI(tokenId);
-        if (bytes(_tokenURI).length > 0) {
-            return _tokenURI;
-        }
-        return _defaultURI;
+        require(
+            _exists(tokenId),
+            "ERC721URIStorage: URI query for nonexistent token"
+        );
+
+        string memory _tokenURI = _tokenURIs[tokenId];
+        return _tokenURI;
     }
 
-    function setBaseURI(string memory baseURI) external onlyOwner {
-        _bURI = baseURI;
+    function updateURI(uint256 tokenId, string memory tokenURI_)
+        public
+        onlyOwner
+    {
+        require(
+            keccak256(abi.encodePacked(tokenURI(tokenId))) ==
+                keccak256(abi.encodePacked(_defaultURI)),
+            "HashNFT: token URI already updated"
+        );
+        _setTokenURI(tokenId, tokenURI_);
     }
 
     /**
-     * @dev See {ERC721-_baseURI}
+     * @dev Sets `_tokenURI` as the tokenURI of `tokenId`.
+     *
+     * Requirements:
+     *
+     * - `tokenId` must exist.
      */
-    function _baseURI() internal view override returns (string memory) {
-        return _bURI;
+    function _setTokenURI(uint256 tokenId, string memory tokenURI_)
+        internal
+        virtual
+    {
+        require(
+            _exists(tokenId),
+            "ERC721URIStorage: URI set of nonexistent token"
+        );
+        _tokenURIs[tokenId] = tokenURI_;
     }
-
 }

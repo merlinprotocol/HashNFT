@@ -22,7 +22,7 @@ describe('RiskConotrol', function () {
   const optionPercent = 500
 
   const USDTDecimals = 18
-  const WBTCDecimals = 18
+  const WBTCDecimals = 8
   const cost = ethers.utils.parseUnits('18', USDTDecimals)
   let wbtcAmount
   let usdtAmount

@@ -47,10 +47,7 @@ contract mToken is Context, Ownable {
         return _fundsTotalClaimed;
     }
 
-    function addPayee(
-        uint256 tokenId,
-        uint256 shares_
-    ) public onlyOwner {
+    function addPayee(uint256 tokenId, uint256 shares_) public onlyOwner {
         address nft = msg.sender;
         require(
             IERC721(nft).ownerOf(tokenId) != address(0),
@@ -86,10 +83,7 @@ contract mToken is Context, Ownable {
 
     function claims(address nft, uint256 tokenId) public {
         address account = IERC4907(nft).userOf(tokenId);
-        require(
-            account == msg.sender,
-            "mToken: caller is not the nft's owner"
-        );
+        require(account == msg.sender, "mToken: caller is not the nft's owner");
         require(
             _shares[_toString(nft, tokenId)] > 0,
             "mToken: tokenId has no shares"
