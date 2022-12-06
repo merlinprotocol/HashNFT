@@ -14,9 +14,13 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    // event FundsHasIncreased(uint256 amount);
     event IssuerHasChanged(address old, address issuer);
-    event InitialPaymentHasGenerated(uint256 ratio);
+    event SetUpHashNFT(address hashnft);
+    event Deliver(address from, address to, uint256 amount);
+    event InitialPaymentHasGenerated(
+        uint256 ratio,
+        uint256 deliverReleaseAmount
+    );
     event Liquidate(address mt, uint256 balance);
     event ClaimInitialPayment(address to, uint256 balance);
     event ClaimOption(address to, uint256 balance);
@@ -45,8 +49,6 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
 
     address public issuer;
 
-    uint256 public tax = 0;
-
     uint256 public taxClaimed = 0;
 
     uint256 public option = 0;
@@ -54,6 +56,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
     uint256 public optionClaimed = 0;
 
     uint256 public initialPayment = 0;
+
+    uint256 public deliverReleaseAmount = 0;
 
     uint256 public initialPaymentClaimed = 0;
 
@@ -93,7 +97,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
      * - `new_` cannot be the zero address.
      * - the caller must be the issuer.
      *
-     * Emits a {ChangeIssuer} event.
+     * Emits a {IssuerHasChanged} event.
      */
     function setIssuer(address _new) public onlyRole(ADMIN_ROLE) {
         address old = issuer;
@@ -108,6 +112,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
             "RiskControl: already set hashnft"
         );
         hashnft = IHashNFT(_hashnft);
+        emit SetUpHashNFT(_hashnft);
     }
 
     function price() public view override returns (uint256) {
@@ -133,7 +138,14 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
     }
 
     function deliver() public {
-        require(deliverAllowed(), "RiskControl: deliver not allowed");
+        require(
+            deliverAllowed() && dayNow() > 0,
+            "RiskControl: deliver not allowed"
+        );
+        require(
+            initialPayment != 0 || _currentStage() == Stage.ObservationPeriod,
+            "RiskControl: must generate initial payment"
+        );
         uint256 desDay = dayNow() - 1;
         require(deliverRecords[desDay] == 0, "RiskControl: already deliver");
         uint256 earnings = earningsOracle.getRound(desDay);
@@ -144,6 +156,10 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         uint256 amount = earnings.mul(hashnft.sold());
         rewards.transferFrom(issuer, hashnft.dispatcher(), amount);
         deliverRecords[desDay] = amount;
+        if (deliverReleaseAmount > 0) {
+            funds.transfer(issuer, deliverReleaseAmount);
+        }
+        emit Deliver(address(issuer), hashnft.dispatcher(), amount);
     }
 
     /**
@@ -217,15 +233,18 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
             ratio = 5000;
         }
 
-        uint256 balance = hashnft.sold().mul(price());
+        uint256 balance = hashnft.sold().mul(cost);
         initialPayment = balance.mul(ratio).div(10000);
-        emit InitialPaymentHasGenerated(ratio);
+        uint256 deliverTimer = contractDuraction.div(1 days).sub(dayNow());
+        deliverTimer = deliverTimer.add(1);
+        deliverReleaseAmount = balance.sub(initialPayment).div(deliverTimer);
+        emit InitialPaymentHasGenerated(ratio, deliverReleaseAmount);
         return ratio;
     }
 
     function claimInitialPayment() public onlyRole(ISSUER_ROLE) {
         require(
-            initialPaymentClaimed > initialPayment,
+            initialPaymentClaimed < initialPayment,
             "RiskControl: invalid initialPayment"
         );
         uint256 amount = initialPayment.sub(initialPaymentClaimed);
@@ -234,21 +253,29 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         emit ClaimInitialPayment(msg.sender, amount);
     }
 
-    function claimTax() public onlyRole(ADMIN_ROLE) {
-        require(taxClaimed > tax, "RiskControl: already tax claimed");
-        tax = hashnft.sold().mul(price()).mul(taxPercent).div(10000);
+    function claimTax(address to)
+        public
+        onlyRole(ADMIN_ROLE)
+        afterStage(Stage.ObservationPeriod)
+    {
+        uint256 tax = hashnft.sold().mul(cost).mul(taxPercent).div(10000);
+        require(taxClaimed < tax, "RiskControl: already tax claimed");
         uint256 amount = tax.sub(taxClaimed);
-        funds.safeTransfer(msg.sender, amount);
+        funds.safeTransfer(to, amount);
         taxClaimed = tax;
-        emit ClaimTax(msg.sender, amount);
+        emit ClaimTax(to, amount);
     }
 
-    function claimOption() public onlyRole(ADMIN_ROLE) {
-        require(option > optionClaimed, "RiskControl: already option claimed");
-        option = hashnft.sold().mul(price()).mul(optionPercent).div(10000);
+    function claimOption(address to)
+        public
+        onlyRole(ADMIN_ROLE)
+        afterStage(Stage.CollectionPeriod)
+    {
+        option = hashnft.sold().mul(cost).mul(optionPercent).div(10000);
+        require(optionClaimed < option, "RiskControl: already option claimed");
         uint256 amount = option.sub(optionClaimed);
-        funds.safeTransfer(msg.sender, amount);
+        funds.safeTransfer(to, amount);
         optionClaimed = option;
-        emit ClaimOption(msg.sender, amount);
+        emit ClaimOption(to, amount);
     }
 }
