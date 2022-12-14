@@ -39,13 +39,7 @@ contract BitcoinEarningsOracle is IEarningsOracle, AccessControl {
         override
         returns (uint256)
     {
-        for (uint256 i = 0;i<7;++i) {
-            uint256 earning = _dailyEarnings[day-i];
-            if (earning != 0) {
-                return earning;
-            }
-        }
-        revert("!round");
+        return _dailyEarnings[day];
     }
 
     function lastRound()

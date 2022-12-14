@@ -9,34 +9,31 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "double-contracts/contracts/4907/ERC4907.sol";
 
-struct NFTInfo {
-    address nft;
-    uint256 tokenId;
-}
 
 contract mToken is Context, Ownable {
-    event mTokenReceived(address from, uint256 amount);
     event FundsClaimed(IERC20 indexed token, address to, uint256 amount);
     event PayeeAdded(address nft, uint256 tokenId, uint256 shares);
 
     IERC20 public funds;
+    address public nft;
 
     uint256 private _totalShares;
     uint256 private _fundsTotalClaimed;
-    mapping(string => uint256) private _fundsClaimed;
+    mapping(uint256 => uint256) private _fundsClaimed;
 
-    mapping(string => uint256) private _shares;
-    NFTInfo[] private _payees;
+    mapping(uint256 => uint256) private _shares;
+    uint256[] private _payees;
 
     /**
      * @dev Creates an instance of `mToken`
      */
-    constructor(address funds_) {
+    constructor(address funds_, address nft_) {
         funds = IERC20(funds_);
+        nft = nft_;
     }
 
-    receive() external payable virtual {
-        emit mTokenReceived(_msgSender(), msg.value);
+    receive() external payable {
+        revert("!ether");
     }
 
     function totalShares() public view returns (uint256) {
@@ -48,103 +45,69 @@ contract mToken is Context, Ownable {
     }
 
     function addPayee(uint256 tokenId, uint256 shares_) public onlyOwner {
-        address nft = msg.sender;
         require(
             IERC721(nft).ownerOf(tokenId) != address(0),
             "mToken: account is the zero address"
         );
         require(shares_ > 0, "mToken: shares are 0");
 
-        _payees.push(NFTInfo(nft, tokenId));
-        _shares[_toString(nft, tokenId)] += shares_;
+        _payees.push(tokenId);
+        _shares[tokenId] += shares_;
         _totalShares = _totalShares + shares_;
         emit PayeeAdded(nft, tokenId, shares_);
     }
 
-    function shares(address nft, uint256 tokenId)
+    function shares(uint256 tokenId)
         public
         view
         returns (uint256)
     {
-        return _shares[_toString(nft, tokenId)];
+        return _shares[tokenId];
     }
 
-    function claimed(address nft, uint256 tokenId)
+    function claimed(uint256 tokenId)
         public
         view
         returns (uint256)
     {
-        return _fundsClaimed[_toString(nft, tokenId)];
+        return _fundsClaimed[tokenId];
     }
 
     function payee(uint256 index) public view returns (address, uint256) {
-        return (_payees[index].nft, _payees[index].tokenId);
+        return (nft, _payees[index]);
     }
 
-    function claims(address nft, uint256 tokenId) public {
+    function claims(uint256 tokenId) public {
         address account = IERC4907(nft).userOf(tokenId);
         require(account == msg.sender, "mToken: caller is not the nft's owner");
         require(
-            _shares[_toString(nft, tokenId)] > 0,
+            _shares[tokenId] > 0,
             "mToken: tokenId has no shares"
         );
         uint256 totalReceived = funds.balanceOf(address(this)) +
             _fundsTotalClaimed;
         uint256 payment = _pending(
-            nft,
             tokenId,
             totalReceived,
-            claimed(nft, tokenId)
+            claimed(tokenId)
         );
 
         require(payment != 0, "mToken: tokenId is not due payment");
-        _fundsClaimed[_toString(nft, tokenId)] += payment;
+        _fundsClaimed[tokenId] += payment;
         _fundsTotalClaimed += payment;
         SafeERC20.safeTransfer(funds, account, payment);
         emit FundsClaimed(funds, account, payment);
     }
 
     function _pending(
-        address nft,
         uint256 tokenId,
         uint256 totalReceived,
         uint256 alreadyClaimed
     ) private view returns (uint256) {
         return
-            (totalReceived * _shares[_toString(nft, tokenId)]) /
+            (totalReceived * _shares[tokenId]) /
             _totalShares -
             alreadyClaimed;
     }
 
-    function _toString(address nft, uint256 tokenId)
-        private
-        pure
-        returns (string memory)
-    {
-        return
-            string(
-                abi.encodePacked(
-                    toAsciiString(nft),
-                    ":",
-                    Strings.toString(tokenId)
-                )
-            );
-    }
-
-    function toAsciiString(address x) internal pure returns (string memory) {
-        bytes memory s = new bytes(40);
-        for (uint256 i = 0; i < 20; i++) {
-            bytes1 b = bytes1(uint8(uint256(uint160(x)) / (2**(8 * (19 - i)))));
-            bytes1 hi = bytes1(uint8(b) / 16);
-            bytes1 lo = bytes1(uint8(b) - 16 * uint8(hi));
-            s[2 * i] = char(hi);
-            s[2 * i + 1] = char(lo);
-        }
-        return string(s);
-    }
-
-    function char(bytes1 b) internal pure returns (bytes1 c) {
-        if (uint8(b) < 10) return bytes1(uint8(b) + 0x30);
-        else return bytes1(uint8(b) + 0x57);
-    }
 }

@@ -186,7 +186,33 @@ describe('RiskConotrol', function () {
     })
   })
 
-  describe('liquidate ()', function () { })
+  describe('liquidate ()', function () { 
+    it('revert error stage', async function () {
+      await expect(riskControl.liquidate(deployer.address)).to.revertedWith('Stages: not the right stage')
+    })
+
+    it('revert invalid mtoken', async ()=> {
+      let timepoint = startTime + (await riskControl.collectionPeriodDuration()).toNumber()
+      await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+      await expect(riskControl.liquidate(deployer.address)).to.revertedWith('!mtoken')
+    })
+
+    it('success', async ()=>{
+      let timepoint = startTime + (await riskControl.collectionPeriodDuration()).toNumber()
+      await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+      await deployments.deploy('mToken', {
+        from: deployer.address,
+        args: [
+          usdt.address,
+          mockHashNFT.address,
+        ],
+        log: true,
+      });
+      const liquidatemToken = await ethers.getContract('mToken')
+
+      riskControl.liquidate(liquidatemToken.address)
+    })
+  })
 
   describe('generateInitialPayment(uint256, uint256, uint256, uint256)', function () {
     it('revert error stage', async function () {

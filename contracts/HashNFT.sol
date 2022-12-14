@@ -71,7 +71,7 @@ contract HashNFT is IHashNFT, ERC4907a {
         vault = _vault;
         total = _total;
 
-        mtoken = new mToken(rewards);
+        mtoken = new mToken(rewards, address(this));
     }
 
     function dispatcher() external view override returns (address) {
@@ -90,8 +90,8 @@ contract HashNFT is IHashNFT, ERC4907a {
 
         uint256 amount = traitPrices[_nftType];
         uint256 cost = riskControl.price().mul(hashrate);
-        riskControl.funds().transferFrom(msg.sender, address(riskControl), cost);
-        riskControl.funds().transferFrom(msg.sender, vault, amount.sub(cost));
+        riskControl.funds().safeTransferFrom(msg.sender, address(riskControl), cost);
+        riskControl.funds().safeTransferFrom(msg.sender, vault, amount.sub(cost));
 
         uint256 tokenId = _counter.current();
 

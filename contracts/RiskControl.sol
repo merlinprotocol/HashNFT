@@ -102,6 +102,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
     function setIssuer(address _new) public onlyRole(ADMIN_ROLE) {
         address old = issuer;
         issuer = _new;
+        _revokeRole(ISSUER_ROLE, old);
         _setupRole(ISSUER_ROLE, issuer);
         emit IssuerHasChanged(old, issuer);
     }
@@ -148,16 +149,13 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         );
         uint256 desDay = dayNow() - 1;
         require(deliverRecords[desDay] == 0, "RiskControl: already deliver");
-        uint256 earnings = earningsOracle.getRound(desDay);
-        if (earnings == 0) {
-            (, uint256 lastEarnings) = earningsOracle.lastRound();
-            earnings = lastEarnings;
-        }
+        (uint256 latestDay, uint256 earnings) = earningsOracle.lastRound();
+        require(latestDay != 0, "!oracle");
         uint256 amount = earnings.mul(hashnft.sold());
-        rewards.transferFrom(issuer, hashnft.dispatcher(), amount);
+        rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         deliverRecords[desDay] = amount;
         if (deliverReleaseAmount > 0) {
-            funds.transfer(issuer, deliverReleaseAmount);
+            funds.safeTransfer(issuer, deliverReleaseAmount);
         }
         emit Deliver(address(issuer), hashnft.dispatcher(), amount);
     }
@@ -165,15 +163,18 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
     /**
      * @dev Liquidate
      */
-    function liquidate()
+    function liquidate(address mtoken)
         public
         onlyRole(ADMIN_ROLE)
         afterStage(Stage.CollectionPeriod)
     {
+        bytes32 codeHash;
+        assembly { codeHash := extcodehash(mtoken) }
+        require(codeHash == 0x48da60a552953d14b469b66727d9c81a5b774664ed24c8505f83385c5410a55d, "!mtoken");
+
         uint256 balance = funds.balanceOf(address(this));
-        address dispatcher = hashnft.dispatcher();
-        funds.safeTransfer(dispatcher, balance);
-        emit Liquidate(dispatcher, balance);
+        funds.safeTransfer(mtoken, balance);
+        emit Liquidate(mtoken, balance);
     }
 
     /**
@@ -248,8 +249,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
             "RiskControl: invalid initialPayment"
         );
         uint256 amount = initialPayment.sub(initialPaymentClaimed);
-        funds.safeTransfer(msg.sender, amount);
         initialPaymentClaimed = initialPayment;
+        funds.safeTransfer(msg.sender, amount);
         emit ClaimInitialPayment(msg.sender, amount);
     }
 
@@ -261,8 +262,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         uint256 tax = hashnft.sold().mul(cost).mul(taxPercent).div(10000);
         require(taxClaimed < tax, "RiskControl: already tax claimed");
         uint256 amount = tax.sub(taxClaimed);
-        funds.safeTransfer(to, amount);
         taxClaimed = tax;
+        funds.safeTransfer(to, amount);
         emit ClaimTax(to, amount);
     }
 
@@ -274,8 +275,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         option = hashnft.sold().mul(cost).mul(optionPercent).div(10000);
         require(optionClaimed < option, "RiskControl: already option claimed");
         uint256 amount = option.sub(optionClaimed);
-        funds.safeTransfer(to, amount);
         optionClaimed = option;
+        funds.safeTransfer(to, amount);
         emit ClaimOption(to, amount);
     }
 }

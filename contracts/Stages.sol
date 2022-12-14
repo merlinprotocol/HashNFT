@@ -29,6 +29,7 @@ contract Stages {
     uint32 public immutable contractDurationInWeeks;
 
     constructor(uint256 startTime_, uint256 raiseDuration_, uint256 internshipDuration_, uint256 contractDuraction_) {
+        require(startTime_ > block.timestamp, "!startTime_");
         startTime = startTime_;
         collectionPeriodDuration = raiseDuration_;
         observationPeriodDuration = internshipDuration_;

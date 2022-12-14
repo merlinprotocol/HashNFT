@@ -14,11 +14,9 @@ contract ERC4907a is ERC4907, IERC4907a, Ownable {
 
     mapping (address => mapping (address => bool)) public override isSetterApprovedForAll;
     mapping (uint256 => address) public override isSetterApproved;
-    uint256 public nextId;
 
     constructor(string memory name_, string memory symbol_)
      ERC4907(name_, symbol_) {
-        nextId = 1;
      }
 
     function _isSetterOrOwner(address setter, uint256 tokenId) public view returns(bool) {
@@ -66,21 +64,15 @@ contract ERC4907a is ERC4907, IERC4907a, Ownable {
             require(expires <= ui.expires, "ERC4907X: no extend");
         }
 
-        _approveSetter(address(0), tokenId);
+        _approveSetter(address(0), tokenId); // cancel approval
         UserInfo storage info = _users[tokenId];
         info.user = user;
         info.expires = expires;
         emit UpdateUser(tokenId,user,expires);
     }
 
-    function mint(address to) external onlyOwner virtual returns(uint256 tokenId) {
-        tokenId = nextId;
-        nextId += 1;
-        _mint(to, tokenId);
-    }
-
     /// @dev See {IERC165-supportsInterface}.
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return interfaceId == type(IERC4907).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(IERC4907a).interfaceId || super.supportsInterface(interfaceId);
     }
 }
