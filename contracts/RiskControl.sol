@@ -153,11 +153,12 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
             (, uint256 lastEarnings) = earningsOracle.lastRound();
             earnings = lastEarnings;
         }
+        require(earnings > 0, "RiskControl: error daily earning");
         uint256 amount = earnings.mul(hashnft.sold());
-        rewards.transferFrom(issuer, hashnft.dispatcher(), amount);
+        rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         deliverRecords[desDay] = amount;
         if (deliverReleaseAmount > 0) {
-            funds.transfer(issuer, deliverReleaseAmount);
+            funds.safeTransfer(issuer, deliverReleaseAmount);
         }
         emit Deliver(address(issuer), hashnft.dispatcher(), amount);
     }
