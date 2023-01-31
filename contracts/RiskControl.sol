@@ -155,8 +155,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         }
         require(earnings > 0, "RiskControl: error daily earning");
         uint256 amount = earnings.mul(hashnft.sold());
-        rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         deliverRecords[desDay] = amount;
+        rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         if (deliverReleaseAmount > 0) {
             funds.safeTransfer(issuer, deliverReleaseAmount);
         }
@@ -249,8 +249,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
             "RiskControl: invalid initialPayment"
         );
         uint256 amount = initialPayment.sub(initialPaymentClaimed);
-        funds.safeTransfer(msg.sender, amount);
         initialPaymentClaimed = initialPayment;
+        funds.safeTransfer(msg.sender, amount);
         emit ClaimInitialPayment(msg.sender, amount);
     }
 
@@ -262,8 +262,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         uint256 tax = hashnft.sold().mul(cost).mul(taxPercent).div(10000);
         require(taxClaimed < tax, "RiskControl: already tax claimed");
         uint256 amount = tax.sub(taxClaimed);
-        funds.safeTransfer(to, amount);
         taxClaimed = tax;
+        funds.safeTransfer(to, amount);
         emit ClaimTax(to, amount);
     }
 
@@ -275,8 +275,8 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         option = hashnft.sold().mul(cost).mul(optionPercent).div(10000);
         require(optionClaimed < option, "RiskControl: already option claimed");
         uint256 amount = option.sub(optionClaimed);
-        funds.safeTransfer(to, amount);
         optionClaimed = option;
+        funds.safeTransfer(to, amount);
         emit ClaimOption(to, amount);
     }
 }
