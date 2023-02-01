@@ -24,6 +24,7 @@ contract Scheduler is AccessControl {
         uint256 period_,
         uint256 delay_
     ) {
+        require(period_ > delay_, "Scheduler: period error");
         period = period_;
         delay = delay_;
 

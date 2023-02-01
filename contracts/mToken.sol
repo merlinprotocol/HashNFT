@@ -35,10 +35,6 @@ contract mToken is Context, Ownable {
         funds = IERC20(funds_);
     }
 
-    receive() external payable virtual {
-        emit mTokenReceived(_msgSender(), msg.value);
-    }
-
     function totalShares() public view returns (uint256) {
         return _totalShares;
     }

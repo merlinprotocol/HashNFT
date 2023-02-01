@@ -101,6 +101,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
      */
     function setIssuer(address _new) public onlyRole(ADMIN_ROLE) {
         address old = issuer;
+        _revokeRole(ISSUER_ROLE, old);
         issuer = _new;
         _setupRole(ISSUER_ROLE, issuer);
         emit IssuerHasChanged(old, issuer);
@@ -158,6 +159,10 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         deliverRecords[desDay] = amount;
         rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         if (deliverReleaseAmount > 0) {
+            uint256 balance = funds.balanceOf((address(this)));
+            if (deliverReleaseAmount > balance) {
+                deliverReleaseAmount = balance;
+            }
             funds.safeTransfer(issuer, deliverReleaseAmount);
         }
         emit Deliver(address(issuer), hashnft.dispatcher(), amount);
