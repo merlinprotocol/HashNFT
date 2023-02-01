@@ -9,7 +9,7 @@ describe('HashNFT', function () {
   let admin
   let notAdmin
   let issuer
-  let buyer
+  let buyer, buyer2, buyer3
   let test
   let vault
 
@@ -40,15 +40,22 @@ describe('HashNFT', function () {
     await ethers.provider.send("evm_mine")
   }
 
+  async function gotoTimePoint(days) {
+    let timepoint = startTime + (await riskControl.collectionPeriodDuration()).toNumber() + days * 3600 * 24
+    await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+    await ethers.provider.send("evm_mine")
+  }
+
+
   async function mintHashNFT(to, typ) {
     await gotoCollection()
     await hashnft.connect(buyer).payForMint(to, typ, note)
   }
 
   beforeEach(async function () {
-    [deployer, admin, notAdmin, issuer, buyer, test, vault] = await ethers.getSigners()
+    [deployer, admin, notAdmin, issuer, buyer, buyer2, buyer3, test, vault] = await ethers.getSigners()
     const ERC20Contract = await ethers.getContractFactory("MyERC20")
-    usdt = await ERC20Contract.deploy("USDT", "usdt", ethers.utils.parseUnits('100000000', USDTDecimals), USDTDecimals)
+    usdt = await ERC20Contract.deploy("USDT", "usdt", ethers.utils.parseUnits('300000000', USDTDecimals), USDTDecimals)
     await usdt.deployed()
 
     wbtc = await ERC20Contract.deploy("Wrapped Bitcoin", "wbtc", ethers.utils.parseUnits('100000000', 8), 8)
@@ -83,9 +90,16 @@ describe('HashNFT', function () {
 
     await riskControl.connect(admin).setHashNFT(hashnft.address)
 
-    let totalSupply = await usdt.totalSupply()
-    await usdt.transfer(buyer.address, totalSupply)
-    await usdt.connect(buyer).approve(hashnft.address, totalSupply)
+    let amount = await usdt.totalSupply()
+    amount = amount.div(3)
+    await usdt.transfer(buyer.address, amount)
+    await usdt.connect(buyer).approve(hashnft.address, amount)
+
+    await usdt.transfer(buyer2.address, amount)
+    await usdt.connect(buyer2).approve(hashnft.address, amount)
+
+    await usdt.transfer(buyer3.address, amount)
+    await usdt.connect(buyer3).approve(hashnft.address, amount)
   })
 
   describe('public member variables', function () {
@@ -228,6 +242,98 @@ describe('HashNFT', function () {
       expect(await usdt.balanceOf(riskControl.address)).to.equal(costs)
       expect(await usdt.balanceOf(vault.address)).to.equal(amount.sub(costs))
     })
+  })
+
+  describe('riskcontrol::liquidate (address)', function () {
+    it('revert error role', async function () {
+      const revertMsg = `AccessControl: account ${notAdmin.address.toLowerCase()} is missing role 0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775`
+      await expect(
+        riskControl.connect(notAdmin).liquidate()
+      ).to.be.revertedWith(revertMsg)
+    })
+
+    it('revert not the right stage', async function () {
+      await expect(
+        riskControl.connect(admin).liquidate()
+      ).to.be.revertedWith('Stages: not the right stage')
+    })
+
+    it('success', async function () {
+      let timepoint = startTime
+      await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+      await ethers.provider.send("evm_mine")
+      let note = "merlin"
+      await expect(
+        hashnft.connect(buyer).payForMint(buyer.address, 0, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer.address, buyer.address, 0, 0, note)
+      await expect(
+        hashnft.connect(buyer2).payForMint(buyer.address, 1, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer2.address, buyer.address, 1, 1, note)
+      await expect(
+        hashnft.connect(buyer3).payForMint(buyer.address, 2, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer3.address, buyer.address, 2, 2, note)
+      
+      let balance = await usdt.balanceOf(riskControl.address)
+      await gotoTimePoint(1)
+      
+      let tx = await riskControl.connect(admin).liquidate()
+      let receipt = await tx.wait()
+      let evt = receipt.events[receipt.events.length - 1]
+      const addr = evt.args.liquidator
+      let amount = evt.args.balance
+      
+      expect(await usdt.balanceOf(addr)).equal(balance)
+      expect(amount).to.equal(balance)
+
+      const LiquidatorContract = await ethers.getContractFactory("Liquidator")
+      const liquidator = await LiquidatorContract.attach(addr)
+      const price = await riskControl.price()
+      let hashrate = await hashnft.traitHashrates(0)
+      tx = await liquidator.claims(0)
+      receipt = await tx.wait()
+      evt = receipt.events[receipt.events.length - 1]
+      const to = evt.args.to
+      amount = evt.args.amount
+      expect(to).equal(buyer.address)
+      expect(hashrate.mul(price)).equal(amount)
+    })
+
+    it('revert already claimed', async function () {
+      let timepoint = startTime
+      await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+      await ethers.provider.send("evm_mine")
+      let note = "merlin"
+      await expect(
+        hashnft.connect(buyer).payForMint(buyer.address, 0, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer.address, buyer.address, 0, 0, note)
+      await expect(
+        hashnft.connect(buyer2).payForMint(buyer.address, 1, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer2.address, buyer.address, 1, 1, note)
+      await expect(
+        hashnft.connect(buyer3).payForMint(buyer.address, 2, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer3.address, buyer.address, 2, 2, note)
+      
+      await gotoTimePoint(1)
+      
+      let tx = await riskControl.connect(admin).liquidate()
+      let receipt = await tx.wait()
+      let evt = receipt.events[receipt.events.length - 1]
+      const addr = evt.args.liquidator
+
+      const LiquidatorContract = await ethers.getContractFactory("Liquidator")
+      const liquidator = await LiquidatorContract.attach(addr)
+      await liquidator.claims(0)
+      await expect(
+        liquidator.claims(0)
+      ).to.be.revertedWith('Liquidator: tokenId already claimed')
+    })
+
   })
 })
 

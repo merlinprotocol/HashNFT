@@ -19,7 +19,7 @@ contract mToken is Context, Ownable {
     event FundsClaimed(IERC20 indexed token, address to, uint256 amount);
     event PayeeAdded(address nft, uint256 tokenId, uint256 shares);
 
-    IERC20 public funds;
+    IERC20 public immutable funds;
 
     uint256 private _totalShares;
     uint256 private _fundsTotalClaimed;

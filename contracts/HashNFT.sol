@@ -36,7 +36,7 @@ contract HashNFT is IHashNFT, ERC4907a {
 
     uint256 public sold = 0;
 
-    mToken public mtoken;
+    mToken public immutable mtoken;
 
     Counters.Counter private _counter;
 

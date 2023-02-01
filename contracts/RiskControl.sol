@@ -8,6 +8,7 @@ import "./interfaces/IOracle.sol";
 import "./interfaces/IRiskControl.sol";
 import "./interfaces/IEarningsOracle.sol";
 import "./interfaces/IHashNFT.sol";
+import "./Liquidator.sol";
 import "./Stages.sol";
 
 contract RiskControl is IRiskControl, AccessControl, Stages {
@@ -21,7 +22,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         uint256 ratio,
         uint256 deliverReleaseAmount
     );
-    event Liquidate(address mt, uint256 balance);
+    event Liquidate(address liquidator, uint256 balance);
     event ClaimInitialPayment(address to, uint256 balance);
     event ClaimOption(address to, uint256 balance);
     event ClaimTax(address to, uint256 balance);
@@ -176,10 +177,14 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         onlyRole(ADMIN_ROLE)
         afterStage(Stage.CollectionPeriod)
     {
+        require(funds.balanceOf(address(this)) != 0, "RiskControl: invalid funds balance");
         uint256 balance = funds.balanceOf(address(this));
-        address dispatcher = hashnft.dispatcher();
-        funds.safeTransfer(dispatcher, balance);
-        emit Liquidate(dispatcher, balance);
+        require(balance > 0, "RiskControl: no funds need liquidate");
+        Liquidator liquidator = new Liquidator();
+        funds.approve(address(liquidator), balance);
+        liquidator.liquidate(address(funds), hashnft.dispatcher(), address(hashnft), balance);
+
+        emit Liquidate(address(liquidator), balance);
     }
 
     /**
