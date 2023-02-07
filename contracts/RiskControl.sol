@@ -74,7 +74,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         address _issuer,
         address po,
         address eo
-    ) Stages(_startTime, 7 days, 30 days, 360 days) {
+    ) Stages(_startTime, 5 days, 30 days, 360 days) {
         cost = _cost;
         taxPercent = _taxPercent;
         optionPercent = _optionPercent;

@@ -1,6 +1,8 @@
 // contracts/HashNFT.sol
 // SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
@@ -21,7 +23,6 @@ contract HashNFT is IHashNFT, ERC4907a {
     using Counters for Counters.Counter;
 
     event HashNFTMint(
-        address indexed payer,
         address indexed to,
         uint256 tokenId,
         Trait trait,
@@ -35,6 +36,20 @@ contract HashNFT is IHashNFT, ERC4907a {
     uint256 public immutable totalSupply;
 
     mToken public immutable mtoken;
+
+    bytes32 public immutable whiteListRootHash;
+
+    uint8 public immutable whiteListMintLimit;
+
+    bytes32 public immutable nodesRootHash;
+
+    uint8 public immutable nodeMintLimit;
+
+    uint256 public immutable whiteListEndtime;
+
+    mapping(address => uint8) public whiteListMint;
+
+    mapping(address => uint8) public nodeMint;
 
     Counters.Counter private _counter;
 
@@ -54,10 +69,16 @@ contract HashNFT is IHashNFT, ERC4907a {
         address rewards,
         address risk,
         uint256[] memory prices,
-        address _vault
+        address _vault,
+        uint256 _whiteListEndtime,
+        bytes32 _whiteListRootHash,
+        uint8 _whiteListMintLimit,
+        bytes32 _nodesRootHash,
+        uint8 _nodeMintLimit
     ) ERC4907a("Hash NFT", "HASHNFT") {
         riskControl = IRiskControl(risk);
         require(prices.length == 9, "HashNFT: prices array length error");
+        require((block.timestamp + 1 days) < _whiteListEndtime, "HashNFT: invalid whitelist end time");
         //BASIC
         uint256 hashrate = prices[0];
         uint256 price = prices[1];
@@ -90,6 +111,11 @@ contract HashNFT is IHashNFT, ERC4907a {
         totalSupply = ts.add(hashrate.mul(balance));
         
         vault = _vault;
+        whiteListRootHash = _whiteListRootHash;
+        whiteListMintLimit = _whiteListMintLimit;
+        nodesRootHash = _nodesRootHash;
+        nodeMintLimit = _nodeMintLimit;
+        whiteListEndtime = _whiteListEndtime;
         mtoken = new mToken(rewards);
     }
 
@@ -105,14 +131,26 @@ contract HashNFT is IHashNFT, ERC4907a {
     }
 
     function payForMint(
-        address _to,
+        bytes32[] calldata _proof,
         Trait _nftType,
-        string memory note
+        string memory _note
     ) public returns (uint256) {
         uint256 balance = traitBalance[_nftType];
-        require(_to != address(0), "HashNFT: mint to the zero address");
         require(balance > 0, "HashNFT: insufficient hashrates");
         require(riskControl.mintAllowed(), "HashNFT: risk not allowed to mint");
+        address to = msg.sender;
+        if (block.timestamp < whiteListEndtime) {
+            bytes32 leaf = keccak256(abi.encodePacked(to));
+            if (MerkleProof.verify(_proof, nodesRootHash, leaf)) { // node
+                require(nodeMint[to] < nodeMintLimit, "HashNFT: insufficient whitelist of node");
+                nodeMint[to] = nodeMint[to] + 1;
+            } else if (MerkleProof.verify(_proof, whiteListRootHash, leaf)) {  // whitelist
+                require(whiteListMint[to] < whiteListMintLimit, "HashNFT: insufficient whitelist");
+                whiteListMint[to] = whiteListMint[to] + 1;
+            } else {
+                revert("HashNFT: not in whitelist");
+            }
+        }
 
         uint256 hashrate = traitHashrates[_nftType];
         uint256 amount = traitPrices[_nftType];
@@ -122,7 +160,7 @@ contract HashNFT is IHashNFT, ERC4907a {
 
         uint256 tokenId = _counter.current();
 
-        _safeMint(_to, tokenId);
+        _safeMint(to, tokenId);
         _counter.increment();
         _setTokenURI(tokenId, _defaultURI);
 
@@ -130,7 +168,7 @@ contract HashNFT is IHashNFT, ERC4907a {
 
         traitBalance[_nftType] = balance.sub(1);
         traits[tokenId] = _nftType;
-        emit HashNFTMint(msg.sender, _to, tokenId, _nftType, note);
+        emit HashNFTMint(to, tokenId, _nftType, _note);
         return tokenId;
     }
 
