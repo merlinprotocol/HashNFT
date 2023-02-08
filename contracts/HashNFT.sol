@@ -15,7 +15,7 @@ import "./ERC4907a.sol";
 contract HashNFT is IHashNFT, ERC4907a { 
     enum Trait {
         BASIC,
-        STANDARD,
+        CLASSIC,
         PREMIUM
     }
     using SafeMath for uint256;
@@ -89,14 +89,14 @@ contract HashNFT is IHashNFT, ERC4907a {
         
         uint256 ts = hashrate.mul(balance);
 
-        //STANDARD
+        //CLASSIC
         hashrate = prices[3];
         price = prices[4];
         balance = prices[5];
-        require(price >= riskControl.price().mul(hashrate), "HashNFT: trait STANDARD price error");
-        traitHashrates[Trait.STANDARD] = hashrate;
-        traitPrices[Trait.STANDARD] = price;
-        traitBalance[Trait.STANDARD] = balance;
+        require(price >= riskControl.price().mul(hashrate), "HashNFT: trait CLASSIC price error");
+        traitHashrates[Trait.CLASSIC] = hashrate;
+        traitPrices[Trait.CLASSIC] = price;
+        traitBalance[Trait.CLASSIC] = balance;
         ts = ts.add(hashrate.mul(balance));
 
         //PREMIUM
@@ -122,7 +122,7 @@ contract HashNFT is IHashNFT, ERC4907a {
     function sold() external view override returns(uint256) {
         uint256 balance = totalSupply;
         balance = balance.sub(traitHashrates[Trait.BASIC].mul(traitBalance[Trait.BASIC]));
-        balance = balance.sub(traitHashrates[Trait.STANDARD].mul(traitBalance[Trait.STANDARD]));
+        balance = balance.sub(traitHashrates[Trait.CLASSIC].mul(traitBalance[Trait.CLASSIC]));
         return balance.sub(traitHashrates[Trait.PREMIUM].mul(traitBalance[Trait.PREMIUM]));
     }
 
@@ -199,8 +199,8 @@ contract HashNFT is IHashNFT, ERC4907a {
         string memory metadatURI;
         if (t == Trait.BASIC) {
             metadatURI = string(abi.encodePacked(_uri, "/basic.json"));
-        } else if (t == Trait.STANDARD) {
-            metadatURI = string(abi.encodePacked(_uri, "/standard.json"));
+        } else if (t == Trait.CLASSIC) {
+            metadatURI = string(abi.encodePacked(_uri, "/classic.json"));
         } else if (t == Trait.PREMIUM) {
             metadatURI = string(abi.encodePacked(_uri, "/premium.json"));
         }

@@ -213,7 +213,7 @@ describe('HashNFT', function () {
     it('success', async function () {
       await gotoPublicCollection()
       await mintHashNFT(buyer, 1)
-      expect(await hashnft.tokenURI(0)).to.be.equal(metadataURI + "/standard.json")
+      expect(await hashnft.tokenURI(0)).to.be.equal(metadataURI + "/classic.json")
 
       await mintHashNFT(buyer, 0)
       expect(await hashnft.tokenURI(1)).to.be.equal(metadataURI + "/basic.json")
