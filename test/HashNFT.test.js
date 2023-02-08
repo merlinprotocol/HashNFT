@@ -19,6 +19,7 @@ describe('HashNFT', function () {
   let vault
   let whiteListMerkleTree
   let nodeMerkleTree
+  const metadataURI = "QmWcLhmCKQNdZZSoVNE9Lnuhg5RJgeajWBEWSCV7PM8gQ2"
 
   let usdt
   let wbtc
@@ -60,7 +61,6 @@ describe('HashNFT', function () {
   }
 
   async function mintHashNFT(wallet, typ) {
-    await gotoPublicCollection()
     let hashedAddress = ethers.utils.keccak256(wallet.address)
     let proof = whiteListMerkleTree.getHexProof(hashedAddress)
     await hashnft.connect(wallet).payForMint(proof, typ, note)
@@ -125,7 +125,7 @@ describe('HashNFT', function () {
     const nodeRootHash = await generateNodeRootHash(nodeBuyer)
     whiteListEndTime = startTime + 3600 * 24 * 2
     const HashNFTContract = await ethers.getContractFactory('HashNFT')
-    hashnft = await HashNFTContract.connect(admin).deploy(wbtc.address, riskControl.address, prices, vault.address, whiteListEndTime, whiteListRootHash, whiteListLimit, nodeRootHash, nodeLimit)
+    hashnft = await HashNFTContract.connect(admin).deploy(wbtc.address, riskControl.address, prices, vault.address, whiteListEndTime, whiteListRootHash, whiteListLimit, nodeRootHash, nodeLimit, metadataURI)
     await hashnft.deployed()
 
     await riskControl.connect(admin).setHashNFT(hashnft.address)
@@ -189,8 +189,17 @@ describe('HashNFT', function () {
     })
 
     it('success', async function () {
+      gotoPublicCollection()
       await mintHashNFT(buyer, 1)
       expect(await hashnft.hashRateOf(0)).to.be.equal(20)
+    })
+  })
+
+  describe('metaData () string', function () {
+    it('success', async function () {
+      await gotoPublicCollection()
+      await mintHashNFT(buyer, 1)
+      expect(await hashnft.metaData()).to.be.equal(metadataURI + "/information.json")
     })
   })
 
@@ -202,37 +211,15 @@ describe('HashNFT', function () {
     })
 
     it('success', async function () {
+      await gotoPublicCollection()
       await mintHashNFT(buyer, 1)
-      expect(await hashnft.tokenURI(0)).to.be.equal("https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb")
-    })
-  })
+      expect(await hashnft.tokenURI(0)).to.be.equal(metadataURI + "/standard.json")
 
-  describe('updateURI (uint256, string) string', function () {
-    const uri = 'https://gateway.pinata.cloud/ipfs/QmYc58gMPveZjw66tKyJ47gmDWavvV7qN4PG2YneNUqHcM'
-    it('revert insufficient permissions', async function () {
-      await expect(
-        hashnft.connect(notAdmin).updateURI(0, uri)
-      ).to.be.revertedWith('Ownable: caller is not the owner')
-    })
+      await mintHashNFT(buyer, 0)
+      expect(await hashnft.tokenURI(1)).to.be.equal(metadataURI + "/basic.json")
 
-    it('revert tokenId not exist', async function () {
-      await expect(
-        hashnft.updateURI(0, uri)
-      ).to.be.revertedWith('ERC721URIStorage: URI query for nonexistent token')
-    })
-
-    it('success', async function () {
-      await mintHashNFT(buyer, 1)
-      await hashnft.connect(admin).updateURI(0, uri)
-      expect(await hashnft.tokenURI(0)).to.be.equal(uri)
-    })
-
-    it('revert already updated', async function () {
-      await mintHashNFT(buyer, 1)
-      await hashnft.connect(admin).updateURI(0, uri)
-      await expect(
-        hashnft.connect(admin).updateURI(0, uri)
-      ).to.be.revertedWith('HashNFT: token URI already updated')
+      await mintHashNFT(buyer, 2)
+      expect(await hashnft.tokenURI(2)).to.be.equal(metadataURI + "/premium.json")
     })
   })
 

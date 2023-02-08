@@ -51,12 +51,6 @@ contract HashNFT is IHashNFT, ERC4907a {
 
     mapping(address => uint8) public nodeMint;
 
-    Counters.Counter private _counter;
-
-    string private constant _defaultURI = "https://gateway.pinata.cloud/ipfs/QmeXA6bFsvAZspDvQTAiGZ7xdCyKPjKcFVzFRmaZQF7acb";
-
-    mapping(uint256 => string) private _tokenURIs;
-
     mapping(Trait => uint256) public traitHashrates;
 
     mapping(Trait => uint256) public traitPrices;
@@ -65,20 +59,25 @@ contract HashNFT is IHashNFT, ERC4907a {
 
     mapping(Trait => uint256) public traitBalance;
 
+    string private _uri;
+
+    Counters.Counter private _counter;
+
     constructor(
         address rewards,
         address risk,
         uint256[] memory prices,
-        address _vault,
-        uint256 _whiteListEndtime,
-        bytes32 _whiteListRootHash,
-        uint8 _whiteListMintLimit,
-        bytes32 _nodesRootHash,
-        uint8 _nodeMintLimit
+        address vault_,
+        uint256 whiteListEndtime_,
+        bytes32 whiteListRootHash_,
+        uint8 whiteListMintLimit_,
+        bytes32 nodesRootHash_,
+        uint8 nodeMintLimit_,
+        string memory uri_
     ) ERC4907a("Hash NFT", "HASHNFT") {
         riskControl = IRiskControl(risk);
         require(prices.length == 9, "HashNFT: prices array length error");
-        require((block.timestamp + 1 days) < _whiteListEndtime, "HashNFT: invalid whitelist end time");
+        require((block.timestamp + 1 days) < whiteListEndtime_, "HashNFT: invalid whitelist end time");
         //BASIC
         uint256 hashrate = prices[0];
         uint256 price = prices[1];
@@ -110,12 +109,13 @@ contract HashNFT is IHashNFT, ERC4907a {
         traitBalance[Trait.PREMIUM] = balance;
         totalSupply = ts.add(hashrate.mul(balance));
         
-        vault = _vault;
-        whiteListRootHash = _whiteListRootHash;
-        whiteListMintLimit = _whiteListMintLimit;
-        nodesRootHash = _nodesRootHash;
-        nodeMintLimit = _nodeMintLimit;
-        whiteListEndtime = _whiteListEndtime;
+        vault = vault_;
+        whiteListRootHash = whiteListRootHash_;
+        whiteListMintLimit = whiteListMintLimit_;
+        nodesRootHash = nodesRootHash_;
+        nodeMintLimit = nodeMintLimit_;
+        whiteListEndtime = whiteListEndtime_;
+        _uri = uri_;
         mtoken = new mToken(rewards);
     }
 
@@ -162,7 +162,6 @@ contract HashNFT is IHashNFT, ERC4907a {
 
         _safeMint(to, tokenId);
         _counter.increment();
-        _setTokenURI(tokenId, _defaultURI);
 
         mtoken.addPayee(tokenId, hashrate);
 
@@ -175,6 +174,10 @@ contract HashNFT is IHashNFT, ERC4907a {
     function hashRateOf(uint256 tokenId) public view returns (uint256) {
         require(_exists(tokenId), "HashNFT: tokenId not exist");
         return traitHashrates[traits[tokenId]];
+    }
+
+    function metaData() public view returns (string memory) {
+        return string(abi.encodePacked(_uri, "/information.json"));
     }
 
      /**
@@ -191,38 +194,16 @@ contract HashNFT is IHashNFT, ERC4907a {
             _exists(tokenId),
             "ERC721URIStorage: URI query for nonexistent token"
         );
-
-        string memory _tokenURI = _tokenURIs[tokenId];
-        return _tokenURI;
-    }
-
-    function updateURI(uint256 tokenId, string memory tokenURI_)
-        public
-        onlyOwner
-    {
-        require(
-            keccak256(abi.encodePacked(tokenURI(tokenId))) ==
-                keccak256(abi.encodePacked(_defaultURI)),
-            "HashNFT: token URI already updated"
-        );
-        _setTokenURI(tokenId, tokenURI_);
-    }
-
-    /**
-     * @dev Sets `_tokenURI` as the tokenURI of `tokenId`.
-     *
-     * Requirements:
-     *
-     * - `tokenId` must exist.
-     */
-    function _setTokenURI(uint256 tokenId, string memory tokenURI_)
-        internal
-        virtual
-    {
-        require(
-            _exists(tokenId),
-            "ERC721URIStorage: URI set of nonexistent token"
-        );
-        _tokenURIs[tokenId] = tokenURI_;
+        
+        Trait t = traits[tokenId];
+        string memory metadatURI;
+        if (t == Trait.BASIC) {
+            metadatURI = string(abi.encodePacked(_uri, "/basic.json"));
+        } else if (t == Trait.STANDARD) {
+            metadatURI = string(abi.encodePacked(_uri, "/standard.json"));
+        } else if (t == Trait.PREMIUM) {
+            metadatURI = string(abi.encodePacked(_uri, "/premium.json"));
+        }
+        return metadatURI;
     }
 }
