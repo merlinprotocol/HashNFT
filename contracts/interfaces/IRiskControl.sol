@@ -10,7 +10,7 @@ interface IRiskControl {
 
     function deliverAllowed() external view returns (bool);
 
-    function dayNow() external view returns (uint256);
+    function offset() external view returns (uint256);
 
     function price() external view returns (uint256);
 

@@ -129,7 +129,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         return _currentStage() > Stage.CollectionPeriod;
     }
 
-    function dayNow() public view override returns (uint256) {
+    function offset() public view override returns (uint256) {
         require(
             _currentStage() > Stage.CollectionPeriod,
             "RiskControl: error stage"
@@ -141,15 +141,16 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
 
     function deliver() public {
         require(
-            deliverAllowed() && dayNow() > 0,
+            deliverAllowed() && offset() > 0,
             "RiskControl: deliver not allowed"
         );
         require(
             initialPayment != 0 || _currentStage() == Stage.ObservationPeriod,
             "RiskControl: must generate initial payment"
         );
-        uint256 desDay = dayNow() - 1;
-        require(deliverRecords[desDay] == 0, "RiskControl: already deliver");
+        uint256 deliverDesDay = offset() - 1;
+        require(deliverRecords[deliverDesDay] == 0, "RiskControl: already deliver");
+        uint256 desDay = (block.timestamp / 1 days) - 1;
         uint256 earnings = earningsOracle.getRound(desDay);
         if (earnings == 0) {
             (, uint256 lastEarnings) = earningsOracle.lastRound();
@@ -157,7 +158,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         }
         require(earnings > 0, "RiskControl: error daily earning");
         uint256 amount = earnings.mul(hashnft.sold());
-        deliverRecords[desDay] = amount;
+        deliverRecords[deliverDesDay] = amount;
         rewards.safeTransferFrom(issuer, hashnft.dispatcher(), amount);
         if (deliverReleaseAmount > 0) {
             uint256 balance = funds.balanceOf((address(this)));
@@ -181,7 +182,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
         uint256 balance = funds.balanceOf(address(this));
         require(balance > 0, "RiskControl: no funds need liquidate");
         Liquidator liquidator = new Liquidator();
-        funds.approve(address(liquidator), balance);
+        funds.safeApprove(address(liquidator), balance);
         liquidator.liquidate(address(funds), hashnft.dispatcher(), address(hashnft), balance);
 
         emit Liquidate(address(liquidator), balance);
@@ -246,7 +247,7 @@ contract RiskControl is IRiskControl, AccessControl, Stages {
 
         uint256 balance = hashnft.sold().mul(cost);
         initialPayment = balance.mul(ratio).div(10000);
-        uint256 deliverTimer = contractDuraction.div(1 days).sub(dayNow());
+        uint256 deliverTimer = contractDuraction.div(1 days).sub(offset());
         deliverTimer = deliverTimer.add(1);
         deliverReleaseAmount = balance.sub(initialPayment).div(deliverTimer);
         emit InitialPaymentHasGenerated(ratio, deliverReleaseAmount);
