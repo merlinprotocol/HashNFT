@@ -4,15 +4,15 @@
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./interfaces/IEarningsOracle.sol";
 import "./interfaces/IRiskControl.sol";
 import "./interfaces/IHashNFT.sol";
 import "./mToken.sol";
-import "./ERC4907a.sol";
 
-contract HashNFT is IHashNFT, ERC4907a { 
+contract HashNFT is IHashNFT, ERC721 { 
     enum Trait {
         BASIC,
         CLASSIC,
@@ -74,7 +74,7 @@ contract HashNFT is IHashNFT, ERC4907a {
         bytes32 nodesRootHash_,
         uint8 nodeMintLimit_,
         string memory uri_
-    ) ERC4907a("Hash NFT", "HASHNFT") {
+    ) ERC721("Hash NFT", "HASHNFT") {
         riskControl = IRiskControl(risk);
         require(prices.length == 9, "HashNFT: prices array length error");
         require((block.timestamp + 1 days) < whiteListEndtime_, "HashNFT: invalid whitelist end time");

@@ -11,8 +11,10 @@ describe('HashNFT', function () {
   let notAdmin
   let issuer
   let buyer, buyer2, buyer3
+  let user
   let whiteListBuyer
   const whiteListLimit = 2
+  let mockEarningsOralce
   let nodeBuyer
   const nodeLimit = 5
   let test
@@ -26,6 +28,7 @@ describe('HashNFT', function () {
   let hashnft
   let riskControl
   let prices
+  let mtoken
 
   const USDTDecimals = 18
   const WBTCDecimals = 8
@@ -60,6 +63,12 @@ describe('HashNFT', function () {
     await ethers.provider.send("evm_mine")
   }
 
+  async function gotoTimePoint(days) {
+    let timepoint = startTime + (await riskControl.collectionPeriodDuration()).toNumber() + days * 3600 * 24
+    await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+    await ethers.provider.send("evm_mine")
+  }
+
   async function mintHashNFT(wallet, typ) {
     let hashedAddress = ethers.utils.keccak256(wallet.address)
     let proof = whiteListMerkleTree.getHexProof(hashedAddress)
@@ -81,10 +90,10 @@ describe('HashNFT', function () {
 
   async function generateNodeRootHash(nodeBuyer) {
     let addresses = [
-      "0xeE2dac56D96F44Adf0515a8d3c88f4B64FC7321e", "0x2568D8FA520a0887D114CA9c99b8d205Cf61dBf6", "0x328b4fd30C4FaaDa2Ae10C750c75C5f04D2C8293", 
-      "0xBE830B967C6a13675cb24b35401564190b882D0E", "0xB1fcF46116022E401704Ad901bB52b486272f869", "0x1EE9ea5F314DedE44455650Ee56dAa42f1091A32", 
-      "0x8F05C04370aE2C7765A60390d21Bb10DF7603285", "0x74060EA11b7d820Dd54e8356bA8969b33F33B121", "0x29BEDc56E1CbF3ebbF8763C31f1814fF36a58ed4", 
-      "0x89b36C6058ec97496419BeAEC862d5B243b34c80", "0x3060A94E27b6f7A1Abe0dE2CbC90FFEc0b8D51a3", "0x425ce127A38Fb8D3De973d8aF8a5DCb4044adde1", 
+      "0xeE2dac56D96F44Adf0515a8d3c88f4B64FC7321e", "0x2568D8FA520a0887D114CA9c99b8d205Cf61dBf6", "0x328b4fd30C4FaaDa2Ae10C750c75C5f04D2C8293",
+      "0xBE830B967C6a13675cb24b35401564190b882D0E", "0xB1fcF46116022E401704Ad901bB52b486272f869", "0x1EE9ea5F314DedE44455650Ee56dAa42f1091A32",
+      "0x8F05C04370aE2C7765A60390d21Bb10DF7603285", "0x74060EA11b7d820Dd54e8356bA8969b33F33B121", "0x29BEDc56E1CbF3ebbF8763C31f1814fF36a58ed4",
+      "0x89b36C6058ec97496419BeAEC862d5B243b34c80", "0x3060A94E27b6f7A1Abe0dE2CbC90FFEc0b8D51a3", "0x425ce127A38Fb8D3De973d8aF8a5DCb4044adde1",
     ]
     addresses.push(nodeBuyer.address)
     let leaves = addresses.map(addr => ethers.utils.keccak256(addr))
@@ -93,7 +102,7 @@ describe('HashNFT', function () {
   }
 
   beforeEach(async function () {
-    [deployer, admin, notAdmin, issuer, buyer, buyer2, buyer3, whiteListBuyer, nodeBuyer, test, vault] = await ethers.getSigners()
+    [deployer, admin, notAdmin, issuer, buyer, buyer2, buyer3, user, whiteListBuyer, nodeBuyer, test, vault] = await ethers.getSigners()
     const ERC20Contract = await ethers.getContractFactory("MyERC20")
     usdt = await ERC20Contract.deploy("USDT", "usdt", ethers.utils.parseUnits('3000000000', USDTDecimals), USDTDecimals)
     await usdt.deployed()
@@ -107,7 +116,7 @@ describe('HashNFT', function () {
     await mockOracle.deployed()
 
     const mockEarningsOralceContract = await ethers.getContractFactory("MockEarningsOracle")
-    let mockEarningsOralce = await mockEarningsOralceContract.deploy()
+    mockEarningsOralce = await mockEarningsOralceContract.deploy()
     await mockEarningsOralce.deployed()
 
     const bestBlock = await ethers.provider.getBlock()
@@ -130,6 +139,9 @@ describe('HashNFT', function () {
 
     await riskControl.connect(admin).setHashNFT(hashnft.address)
 
+    const mTokenContract = await ethers.getContractFactory('mToken')
+    mtoken = mTokenContract.attach(await hashnft.mtoken())
+
     let amount = await usdt.totalSupply()
     amount = amount.div(5)
     await usdt.transfer(buyer.address, amount)
@@ -146,6 +158,10 @@ describe('HashNFT', function () {
 
     await usdt.transfer(nodeBuyer.address, amount)
     await usdt.connect(nodeBuyer).approve(hashnft.address, amount)
+
+    let wbtcAmount = await wbtc.totalSupply()
+    await wbtc.transfer(issuer.address, wbtcAmount)
+    await wbtc.connect(issuer).approve(riskControl.address, wbtcAmount)
   })
 
   describe('public member variables', function () {
@@ -166,8 +182,6 @@ describe('HashNFT', function () {
 
       expect(await hashnft.whiteListEndtime()).to.equal(whiteListEndTime)
 
-      const mTokenContract = await ethers.getContractFactory('mToken')
-      let mtoken = mTokenContract.attach(await hashnft.mtoken())
       expect(await mtoken.owner()).to.be.equal(hashnft.address)
       await expect(
         mtoken.connect(deployer).addPayee(0, 100)
@@ -258,9 +272,9 @@ describe('HashNFT', function () {
       let proof = whiteListMerkleTree.getHexProof(hashedAddress)
       const hashType = 2
       const note = "merlin"
-      for (let idx = 0; idx < limit; idx ++) {
+      for (let idx = 0; idx < limit; idx++) {
         await hashnft.connect(whiteListBuyer).payForMint(proof, hashType, note)
-        expect(await hashnft.whiteListMint(whiteListBuyer.address)).to.be.equal(idx+1)
+        expect(await hashnft.whiteListMint(whiteListBuyer.address)).to.be.equal(idx + 1)
       }
       await expect(
         hashnft.connect(whiteListBuyer).payForMint(proof, hashType, note)
@@ -274,9 +288,9 @@ describe('HashNFT', function () {
       let proof = nodeMerkleTree.getHexProof(hashedAddress)
       const hashType = 2
       const note = "merlin"
-      for (let idx = 0; idx < limit; idx ++) {
+      for (let idx = 0; idx < limit; idx++) {
         await hashnft.connect(nodeBuyer).payForMint(proof, hashType, note)
-        expect(await hashnft.nodeMint(nodeBuyer.address)).to.be.equal(idx+1)
+        expect(await hashnft.nodeMint(nodeBuyer.address)).to.be.equal(idx + 1)
       }
       await expect(
         hashnft.connect(nodeBuyer).payForMint(proof, hashType, note)
@@ -356,6 +370,71 @@ describe('HashNFT', function () {
       expect(await usdt.balanceOf(vault.address)).to.equal(amount.sub(costs))
 
       expect(await hashnft.sold()).to.equal(hashrate)
+    })
+  })
+
+  //npx hardhat test test/HashNFT.test.js --grep "claim"
+  describe('claims', function () {
+    async function prepare() {
+      await gotoPublicCollection()
+      let hashedAddress = ethers.utils.keccak256(buyer.address)
+      let proof = whiteListMerkleTree.getHexProof(hashedAddress)
+      const note = "merlin"
+      await expect(
+        hashnft.connect(buyer).payForMint(proof, 0, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer.address, 0, 0, note)
+      await expect(
+        hashnft.connect(buyer2).payForMint(proof, 1, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer2.address, 1, 1, note)
+      await expect(
+        hashnft.connect(buyer3).payForMint(proof, 2, note)
+      ).to.emit(hashnft, 'HashNFTMint')
+        .withArgs(buyer3.address, 2, 2, note)
+    }
+
+    it('claims', async function () {
+      await prepare()
+      let day = 1
+      await gotoTimePoint(day)
+      const sold = await hashnft.sold()
+      const bestBlock = await ethers.provider.getBlock()
+      const today = Math.floor(bestBlock.timestamp / 3600 / 24)
+      let earnings = await mockEarningsOralce.getRound(today - 1)
+      let amount = sold.mul(earnings)
+
+      await expect(
+        riskControl.deliver()
+      ).to.emit(riskControl, 'Deliver').withArgs(issuer.address, mtoken.address, amount)
+      
+      const tokenId = 0
+      amount = earnings.mul((await hashnft.traitHashrates(tokenId)))
+      await expect(
+        mtoken.connect(buyer).claims(hashnft.address, tokenId)
+      ).to.emit(mtoken, 'FundsClaimed').withArgs(wbtc.address, buyer.address, amount)
+    })
+
+    it('claims with other signer', async function () {
+      await prepare()
+      let day = 1
+      await gotoTimePoint(day)
+      const sold = await hashnft.sold()
+      const bestBlock = await ethers.provider.getBlock()
+      const today = Math.floor(bestBlock.timestamp / 3600 / 24)
+      let earnings = await mockEarningsOralce.getRound(today - 1)
+      let amount = sold.mul(earnings)
+
+      await expect(
+        riskControl.deliver()
+      ).to.emit(riskControl, 'Deliver').withArgs(issuer.address, mtoken.address, amount)
+      
+      const tokenId = 0
+      amount = earnings.mul((await hashnft.traitHashrates(tokenId)))
+      const owner = await hashnft.ownerOf(tokenId)
+      await expect(
+        mtoken.connect(buyer2).claims(hashnft.address, tokenId)
+      ).to.emit(mtoken, 'FundsClaimed').withArgs(wbtc.address, owner, amount)
     })
   })
 

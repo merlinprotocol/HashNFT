@@ -1,7 +1,7 @@
 {
   "description": "HashNFT is the first Real World asset issued by Merlin Protocol. It realizes the whole process of investment computing power including pre-sale, observation period, delivery period and end on the chain through intelligent contract technology. The contract automatically settles funds and delivers output according to the state of the prophecy machine. By ensuring that the settlement process is open and transparent and that there is no misappropriation of assets, NFT holders will receive the same investment returns that real world miners enjoy in mining.",
   "external_url": "https://merlinprotocol.org/dapp/hashnft", 
-  "image": "QmYc58gMPveZjw66tKyJ47gmDWavvV7qN4PG2YneNUqHcM", 
+  "image": "QmULwh51Ch36qLoSTKZG5XMRCvUeAyBvfpazPXpsBRU5um", 
   "name": "HashNFT#0001 Premium",
   "attributes": [ 
     {
@@ -10,11 +10,11 @@
     },
     {
       "trait_type": "Deliver start", 
-      "delivery": "2023-03-01"
+      "value": "2023-03-01"
     },
     {
       "trait_type": "Deliver timer", 
-      "delivery": 360
+      "value": 360
     }
   ]
 }

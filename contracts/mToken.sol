@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "double-contracts/contracts/4907/ERC4907.sol";
 
 struct NFTInfo {
     address nft;
@@ -78,26 +77,23 @@ contract mToken is Context, Ownable {
     }
 
     function claims(address nft, uint256 tokenId) public {
-        address account = IERC4907(nft).userOf(tokenId);
-        require(account == msg.sender, "mToken: caller is not the nft's owner");
         require(
             _shares[_toString(nft, tokenId)] > 0,
             "mToken: tokenId has no shares"
         );
-        uint256 totalReceived = funds.balanceOf(address(this)) +
-            _fundsTotalClaimed;
+        address to = IERC721(nft).ownerOf(tokenId);
+        uint256 totalReceived = funds.balanceOf(address(this)) + _fundsTotalClaimed;
         uint256 payment = _pending(
             nft,
             tokenId,
             totalReceived,
             claimed(nft, tokenId)
         );
-
         require(payment != 0, "mToken: tokenId is not due payment");
         _fundsClaimed[_toString(nft, tokenId)] += payment;
         _fundsTotalClaimed += payment;
-        SafeERC20.safeTransfer(funds, account, payment);
-        emit FundsClaimed(funds, account, payment);
+        SafeERC20.safeTransfer(funds, to, payment);
+        emit FundsClaimed(funds, to, payment);
     }
 
     function _pending(
