@@ -3,6 +3,7 @@
  */
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-web3");
+require("@nomiclabs/hardhat-etherscan");
 require("hardhat-deploy");
 require('hardhat-deploy-ethers');
 
@@ -19,6 +20,9 @@ module.exports = {
       optimizer: {
         enabled: true,
         runs: 200,
+        details: {
+          yul: false
+        }
       },
     },
   },
@@ -52,27 +56,21 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545",
     },
+    eth: {
+      url: "https://eth.getblock.io/f899d576-ba45-4a43-9c82-14a9ca6b15dc/mainnet/",
+      accounts: [process.env.deployer],
+      allowUnlimitedContractSize: true,
+    },
     goerli: {
-      url: "https://eth.getblock.io/f899d576-ba45-4a43-9c82-14a9ca6b15dc/goerli/",
+      url: "https://rpc.ankr.com/eth_goerli",
       chainId: 5,
       accounts: [process.env.deployer],
-      gas: 3100000,
-      gasPrice: 8000000000,
+      gas: 5000000, //units of gas you are willing to pay, aka gas limit
+      gasPrice:  50000000000,
+      allowUnlimitedContractSize: true,
     },
   },
   etherscan: {
-    apiKey: {
-      goerli: process.env.apikey
-    },
-    customChains: [
-      {
-        network: "goerli",
-        chainId: 5,
-        urls: {
-          apiURL: "http://api-goerli.etherscan.io",
-          browserURL: "https://goerli.etherscan.io"
-        }
-      }
-    ]
-  }
+    apiKey: "66PX9UR5WY4783WI278HJDCM88XJ7J8MFY",
+  },
 };
