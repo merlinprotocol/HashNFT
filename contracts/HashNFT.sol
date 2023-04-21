@@ -163,7 +163,7 @@ contract HashNFT is IHashNFT, ERC721 {
         _safeMint(to, tokenId);
         _counter.increment();
 
-        mtoken.addPayee(tokenId, hashrate);
+        mtoken.addPayee(address(this), tokenId, hashrate);
 
         traitBalance[_nftType] = balance.sub(1);
         traits[tokenId] = _nftType;

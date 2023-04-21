@@ -42,8 +42,7 @@ contract mToken is Context, Ownable {
         return _fundsTotalClaimed;
     }
 
-    function addPayee(uint256 tokenId, uint256 shares_) public onlyOwner {
-        address nft = msg.sender;
+    function addPayee(address nft, uint256 tokenId, uint256 shares_) public onlyOwner {
         require(
             IERC721(nft).ownerOf(tokenId) != address(0),
             "mToken: account is the zero address"
