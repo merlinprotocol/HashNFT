@@ -2,7 +2,10 @@
 // Load dependencies
 
 const { expect } = require("chai");
-const { deployRiskControlv2, generateMerkleTree } = require("./testHelpers");
+const { deployRiskControlv2, 
+  generateMerkleTree, 
+  getBlockTimestamp,
+  setBlockTimestamp } = require("./testHelpers");
 
 describe("HashNFTv2", function () {
   let hashNFTv2;
@@ -23,11 +26,6 @@ describe("HashNFTv2", function () {
   const ratio = 3000;
   const freeMintSupply = 200;
   const whitelistLimit = 2;
-
-  async function getBlockTimestamp() {
-    const block = await ethers.provider.getBlock();
-    return block.timestamp;
-  }
 
   async function freeMint(signer, count) {
     const balance = await ethers.provider.getBalance(hashNFTv2.address);
@@ -69,15 +67,10 @@ describe("HashNFTv2", function () {
     expect(await riskControl.sold()).to.equal(sold);
   }
 
-  async function setBlockTimestamp(timepoint) {
-    await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
-    await ethers.provider.send("evm_mine")
-  }
-
   beforeEach(async function () {
     [deployer, tracker, issuer, freeMintUser, user, notAdmin] = await ethers.getSigners();
     admin = deployer;
-    startAt = (Math.floor(await getBlockTimestamp() / 3600 / 24) + 1) * 3600 * 24
+    startAt = (Math.floor(await getBlockTimestamp() / 3600 / 24) + 1) * 3600 * 24;
 
     const NFTSVGContract = await ethers.getContractFactory("NFTSVG");
     svg = await NFTSVGContract.deploy();

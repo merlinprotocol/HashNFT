@@ -81,14 +81,17 @@ contract HashNFTv2 is ERC721, AccessControl {
             "HashNFTv2: caller is not in whitelist"
         );
         uint256 balance = address(this).balance;
-        require(balance >= riskControl.price(), "HashNFTv2: insufficient funds");
+        require(
+            balance >= riskControl.price(),
+            "HashNFTv2: insufficient funds"
+        );
 
         uint256 tokenId = _counter.current();
         _safeMint(to, tokenId);
         _counter.increment();
         whitelistMinted[to] = whitelistMinted[to] + 1;
         freeMinted += 1;
-        riskControl.bind{value:riskControl.price()}(address(this), tokenId, 1);
+        riskControl.bind{value: riskControl.price()}(address(this), tokenId, 1);
         return tokenId;
     }
 
@@ -105,7 +108,7 @@ contract HashNFTv2 is ERC721, AccessControl {
         uint256 tokenId = _counter.current();
         _safeMint(to, tokenId);
         _counter.increment();
-        riskControl.bind{value:balance}(address(this), tokenId, amount);
+        riskControl.bind{value: balance}(address(this), tokenId, amount);
         return tokenId;
     }
 
@@ -129,5 +132,23 @@ contract HashNFTv2 is ERC721, AccessControl {
         address payable recipientPayable = payable(msg.sender);
         recipientPayable.transfer(balance);
         emit Withdraw(recipientPayable, balance);
+    }
+
+    function burn(uint256 tokenId) external payable {
+        require(msg.sender == ownerOf(tokenId), "HashNFTv2: only owner");
+        require(
+            riskControl.currentStage() == IRiskControlv2.Status.MATURED ||
+                riskControl.currentStage() == IRiskControlv2.Status.DEFAULTED,
+            "HashNFTv2: riskControl not in MATURED or DEFAULTED"
+        );
+        address nft = address(this);
+        if (riskControl.funds(nft, tokenId) > 0) {
+            riskControl.release(address(this), tokenId);
+        }
+        riskControl.release(nft, tokenId);
+        if (riskControl.rewardBalance(nft, tokenId) > 0) {
+            riskControl.release(riskControl.rewards(), address(this), tokenId);
+        }
+        _burn(tokenId);
     }
 }

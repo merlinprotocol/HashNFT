@@ -21,6 +21,7 @@ async function deployRiskControlv2(deployer, tracker, issuer, price, supply, sta
     ratio,
     eo.address
   );
+  await wbtc.connect(issuer).approve(instance.address, wbtcSupply);
   return instance;
 }
 
@@ -51,8 +52,20 @@ async function generateMerkleTree(account) {
   return merkleTree;
 }
 
+async function setBlockTimestamp(timepoint) {
+  await network.provider.send('evm_setNextBlockTimestamp', [timepoint])
+  await ethers.provider.send("evm_mine")
+}
+
+async function getBlockTimestamp() {
+  const block = await ethers.provider.getBlock();
+  return block.timestamp;
+}
+
 module.exports = {
   deployRiskControlv2,
   deployBitcoinEarningsOracle,
   generateMerkleTree,
+  getBlockTimestamp,
+  setBlockTimestamp,
 };
