@@ -48,7 +48,7 @@ describe("RiskControlv2", function () {
     users = [user1, user2, user3, user4];
     for (let i = 0; i < hashrates.length; i++) {
       const balance = price.mul(hashrates[i]);
-      await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
+      await hashNFTv2.connect(users[i]).functions["mint(uint256,address)"](hashrates[i], users[i].address, { value: balance });
     }
   });
 
@@ -101,7 +101,6 @@ describe("RiskControlv2", function () {
     });
 
     it("should correctly Deliver for all duration", async function () {
-      // Add test cases for free minting of tokens
       await deliverAll(riskControl, oracle, issuer, startAt);
       await setBlockTimestamp(startAt + duration + 3600 * 24 + 1);
       expect(await riskControl.currentStage()).to.equal(MATURED);

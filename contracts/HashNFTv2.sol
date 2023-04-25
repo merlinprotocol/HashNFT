@@ -18,9 +18,9 @@ contract HashNFTv2 is ERC721, AccessControl {
 
     Counters.Counter private _counter;
 
-    uint8 public freeMintSupply;
+    uint8 public whitelistSupply;
 
-    uint8 public freeMinted = 0;
+    uint8 public whitelistMinted = 0;
 
     bytes32 public whiteListRootHash;
 
@@ -28,7 +28,7 @@ contract HashNFTv2 is ERC721, AccessControl {
 
     IRiskControlv2 public riskControl;
 
-    mapping(address => uint8) public whitelistMinted;
+    mapping(address => uint8) public whitelistBalance;
 
     constructor(address rs) ERC721("Hash NFT v2", "HASHNFTv2") {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -52,10 +52,10 @@ contract HashNFTv2 is ERC721, AccessControl {
         whiteListRootHash = whiteListRootHash_;
     }
 
-    function setFreeMintSupply(
+    function setWhitelistSupply(
         uint8 supply
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        freeMintSupply = supply;
+        whitelistSupply = supply;
     }
 
     function setWhitelistLimit(
@@ -64,14 +64,22 @@ contract HashNFTv2 is ERC721, AccessControl {
         whitelistLimit = limit;
     }
 
-    function freeMint(
+    function mint(
         bytes32[] calldata _proof,
+        uint256 amount,
         address to
-    ) public returns (uint256) {
+    ) public payable returns (uint256) {
         require(to != address(0), "HashNFTv2: zero address");
         require(riskControl.mintAllowed(), "HashNFTv2: mint not allow");
+        uint256 payFunds = amount.mul(riskControl.price());
+        amount = amount.add(1);
         require(
-            freeMinted < freeMintSupply && whitelistMinted[to] < whitelistLimit,
+            amount.add(riskControl.sold()) <= riskControl.supply(),
+            "HashNFTv2: insufficient hashrate"
+        );
+        require(
+            whitelistBalance[to] < whitelistLimit &&
+                whitelistMinted < whitelistSupply,
             "HashNFTv2: insufficient whitelist"
         );
         bytes32 leaf = keccak256(abi.encodePacked(to));
@@ -81,16 +89,15 @@ contract HashNFTv2 is ERC721, AccessControl {
         );
         uint256 balance = address(this).balance;
         require(
-            balance >= riskControl.price(),
+            msg.value >= payFunds && balance >= riskControl.price(),
             "HashNFTv2: insufficient funds"
         );
-
         uint256 tokenId = _counter.current();
         _safeMint(to, tokenId);
         _counter.increment();
-        whitelistMinted[to] = whitelistMinted[to] + 1;
-        freeMinted += 1;
-        riskControl.bind{value: riskControl.price()}(address(this), tokenId, 1);
+        whitelistBalance[to] = whitelistBalance[to] + 1;
+        whitelistMinted += 1;
+        riskControl.bind{value: amount.mul(riskControl.price())}(address(this), tokenId, amount);
         return tokenId;
     }
 

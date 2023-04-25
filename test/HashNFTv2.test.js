@@ -17,7 +17,7 @@ describe("HashNFTv2", function () {
   let admin;
   let notAdmin;
   let issuer;
-  let freeMintUser;
+  let whitelistUser;
   let user;
   let users;
   let merkleTree;
@@ -28,19 +28,19 @@ describe("HashNFTv2", function () {
   const supply = 4000;
   const price = ethers.utils.parseEther("0.001");
   const ratio = 3000;
-  const freeMintSupply = 200;
+  const whitelistSupply = 200;
   const whitelistLimit = 2;
   const INACTIVE = 0;
   const ACTIVE = 1;
   const MATURED = 2;
   const DEFAULTED = 3;
 
-  async function freeMint(signer, count) {
+  async function whitelistMint(signer, count) {
     const balance = await ethers.provider.getBalance(hashNFTv2.address);
     if (balance < price) {
       await deployer.sendTransaction({
         to: hashNFTv2.address,
-        value: price.mul(freeMintSupply),
+        value: price.mul(whitelistSupply),
       });
     }
     const hashedAddress = ethers.utils.keccak256(signer.address);
@@ -49,13 +49,13 @@ describe("HashNFTv2", function () {
     let tokenId = 0;
     for (let i = 0; i < count; i++) {
       await expect(
-        await hashNFTv2.connect(signer).freeMint(proof, signer.address)
+        await hashNFTv2.connect(signer).functions["mint(bytes32[],uint256,address)"](proof, 0, signer.address)
       ).to.emit(hashNFTv2, 'Transfer')
         .withArgs(ethers.constants.AddressZero, signer.address, tokenId);
       expect(await hashNFTv2.ownerOf(tokenId)).to.equal(signer.address);
       tokenId += 1;
     }
-    expect(await hashNFTv2.freeMinted()).to.equal(count);
+    expect(await hashNFTv2.whitelistMinted()).to.equal(count);
     expect(await ethers.provider.getBalance(riskControl.address)).to.equal(price.mul(count));
   }
 
@@ -65,7 +65,7 @@ describe("HashNFTv2", function () {
     for (const amount of amounts) {
       const balance = (await riskControl.price()).mul(amount);
       await expect(
-        await hashNFTv2.connect(signer).mint(amount, signer.address, { value: balance })
+        await hashNFTv2.connect(signer).functions["mint(uint256,address)"](amount, signer.address, { value: balance })
       ).to.emit(hashNFTv2, 'Transfer')
         .withArgs(ethers.constants.AddressZero, signer.address, tokenId);
       expect(await hashNFTv2.ownerOf(tokenId)).to.equal(signer.address);
@@ -76,7 +76,7 @@ describe("HashNFTv2", function () {
   }
 
   beforeEach(async function () {
-    [deployer, tracker, issuer, freeMintUser, user, user1, user2, user3, user4, notAdmin] = await ethers.getSigners();
+    [deployer, tracker, issuer, whitelistUser, user, user1, user2, user3, user4, notAdmin] = await ethers.getSigners();
     admin = deployer;
     users = [user1, user2, user3, user4];
     startAt = (Math.floor(await getBlockTimestamp() / 3600 / 24) + 1) * 3600 * 24;
@@ -94,18 +94,18 @@ describe("HashNFTv2", function () {
     oracle = await BitcoinEarningsOracleContract.attach(await riskControl.earningsOracle());
     hashNFTv2 = await HashNFTv2Contract.deploy(riskControl.address);
     await hashNFTv2.deployed();
-    await hashNFTv2.setFreeMintSupply(freeMintSupply);
+    await hashNFTv2.setWhitelistSupply(whitelistSupply);
     await hashNFTv2.setWhitelistLimit(whitelistLimit);
-    merkleTree = await generateMerkleTree(freeMintUser.address);
+    merkleTree = await generateMerkleTree(whitelistUser.address);
     await hashNFTv2.setWhiteListRootHash(merkleTree.getRoot());
   });
 
   describe("HashNFTv2 deployment", function () {
     it("should deploy with correct parameters", async function () {
       // Add test cases for verifying constructor parameters
-      expect(await hashNFTv2.freeMintSupply()).to.equal(freeMintSupply);
+      expect(await hashNFTv2.whitelistSupply()).to.equal(whitelistSupply);
       expect(await hashNFTv2.whitelistLimit()).to.equal(whitelistLimit);
-      expect(await hashNFTv2.freeMinted()).to.equal(0);
+      expect(await hashNFTv2.whitelistMinted()).to.equal(0);
       expect(await hashNFTv2.riskControl()).to.equal(riskControl.address);
       expect(await hashNFTv2.whiteListRootHash()).to.equal(merkleTree.getHexRoot());
       expect(await hashNFTv2.name()).to.equal("Hash NFT v2");
@@ -116,49 +116,72 @@ describe("HashNFTv2", function () {
     });
   });
 
-  describe("FreeMint functionality", function () {
-    it("should correctly mint tokens for free", async function () {
-      // Add test cases for free minting of tokens
-      await freeMint(freeMintUser, 1);
+  describe("Mint(bytes32[],uint256,address) functionality", function () {
+    it("should correctly mint tokens for Mint", async function () {
+      await whitelistMint(whitelistUser, 1);
+    });
+
+    it("should correctly mint tokens for Mint 2", async function () {
+      const balance = await ethers.provider.getBalance(hashNFTv2.address);
+      if (balance < price) {
+        await deployer.sendTransaction({
+          to: hashNFTv2.address,
+          value: price,
+        });
+      }
+      const hashedAddress = ethers.utils.keccak256(whitelistUser.address);
+      let proof = merkleTree.getHexProof(hashedAddress);
+
+      const tokenId = 0;
+      const amount = 1;
+      const payAmount = price.mul(amount);
+      await expect(
+        hashNFTv2.connect(whitelistUser).functions["mint(bytes32[],uint256,address)"](proof, amount, whitelistUser.address,  { value: payAmount })
+      ).to.emit(hashNFTv2, 'Transfer')
+        .withArgs(ethers.constants.AddressZero, whitelistUser.address, tokenId);
+      expect(await hashNFTv2.ownerOf(tokenId)).to.equal(whitelistUser.address);
+
+      expect(await hashNFTv2.whitelistMinted()).to.equal(1);
+      expect(await ethers.provider.getBalance(riskControl.address)).to.equal(price.mul(amount + 1));
     });
 
     it('revert mint not allow', async function () {
       await setBlockTimestamp(startAt);
       await expect(
-        freeMint(freeMintUser, 1)
+        whitelistMint(whitelistUser, 1)
       ).to.be.revertedWith('HashNFTv2: mint not allow');
     });
 
     it('revert caller is not in whitelist', async function () {
       await expect(
-        freeMint(user, 1)
+        whitelistMint(user, 1)
       ).to.be.revertedWith('HashNFTv2: caller is not in whitelist');
     });
 
     it('revert insufficient whitelist', async function () {
       await expect(
-        freeMint(freeMintUser, 3)
+        whitelistMint(whitelistUser, 3)
       ).to.be.revertedWith('HashNFTv2: insufficient whitelist');
     });
 
     it('revert insufficient whitelist 2', async function () {
-      await hashNFTv2.setFreeMintSupply(1);
+      await hashNFTv2.setWhitelistSupply(1);
       await expect(
-        freeMint(freeMintUser, 2)
+        whitelistMint(whitelistUser, 2)
       ).to.be.revertedWith('HashNFTv2: insufficient whitelist');
     });
 
     it('revert insufficient funds', async function () {
       expect(await ethers.provider.getBalance(hashNFTv2.address)).to.equal(0);
-      const hashedAddress = ethers.utils.keccak256(freeMintUser.address);
+      const hashedAddress = ethers.utils.keccak256(whitelistUser.address);
       let proof = merkleTree.getHexProof(hashedAddress);
       await expect(
-        hashNFTv2.connect(freeMintUser).freeMint(proof, freeMintUser.address)
+        hashNFTv2.connect(whitelistUser).functions["mint(bytes32[],uint256,address)"](proof, 0, whitelistUser.address)
       ).to.be.revertedWith('HashNFTv2: insufficient funds');
     });
   });
 
-  describe("Mint functionality", function () {
+  describe("Mint(uint256,address) functionality", function () {
     it("should correctly mint tokens", async function () {
       // Add test cases for minting tokens
       await mint(user, [10]);
@@ -187,7 +210,7 @@ describe("HashNFTv2", function () {
   describe("Withdraw functionality", function () {
     it("should correctly Withdraw", async function () {
       // Add test cases for withdraw functionality
-      await freeMint(freeMintUser, 2);
+      await whitelistMint(whitelistUser, 2);
       const balance = await ethers.provider.getBalance(hashNFTv2.address);
       await expect(
         hashNFTv2.connect(admin).withdraw()
@@ -209,7 +232,7 @@ describe("HashNFTv2", function () {
     async function mockDeliver() {
       for (let i = 0; i < hashrates.length; i++) {
         const balance = price.mul(hashrates[i]);
-        await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
+        await hashNFTv2.connect(users[i]).functions["mint(uint256,address)"](hashrates[i], users[i].address, { value: balance });
       }
       await deliverAll(riskControl, oracle, issuer, startAt);
       await setBlockTimestamp(startAt + duration + 3600 * 24 + 1);
@@ -236,7 +259,7 @@ describe("HashNFTv2", function () {
     it("should correctly Burn 2", async function () {
       for (let i = 0; i < hashrates.length; i++) {
         const balance = price.mul(hashrates[i]);
-        await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
+        await hashNFTv2.connect(users[i]).functions["mint(uint256,address)"](hashrates[i], users[i].address, { value: balance });
       }
       const deliverTimer = 10;
       const splitterAddr = await riskControl.splitter();

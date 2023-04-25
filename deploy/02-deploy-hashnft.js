@@ -62,13 +62,13 @@ async function func() {
     log: true
   });
   const hashnft = await ethers.getContract('HashNFT');
-  const freeMintSupply = 200;
+  const whitelistSupply = 200;
   deployer.sendTransaction({
     to: hashnft.address,
-    value: price.mul(freeMintSupply),
+    value: price.mul(whitelistSupply),
   });
   const whitelistLimit = 2;
-  await hashnft.setFreeMintSupply(freeMintSupply);
+  await hashnft.setWhitelistSupply(whitelistSupply);
   await hashnft.setWhitelistLimit(whitelistLimit);
   let accounts = [
     "0xeE2dac56D96F44Adf0515a8d3c88f4B64FC7321e", "0x2568D8FA520a0887D114CA9c99b8d205Cf61dBf6", "0x328b4fd30C4FaaDa2Ae10C750c75C5f04D2C8293",
