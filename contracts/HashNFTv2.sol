@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./interfaces/IRiskControlv2.sol";
 import "./libraries//NFTSVG.sol";
-import "hardhat/console.sol";
 
 contract HashNFTv2 is ERC721, AccessControl {
     using Counters for Counters.Counter;
@@ -143,11 +142,10 @@ contract HashNFTv2 is ERC721, AccessControl {
         );
         address nft = address(this);
         if (riskControl.funds(nft, tokenId) > 0) {
-            riskControl.release(address(this), tokenId);
+            riskControl.release(nft, tokenId);
         }
-        riskControl.release(nft, tokenId);
         if (riskControl.rewardBalance(nft, tokenId) > 0) {
-            riskControl.release(riskControl.rewards(), address(this), tokenId);
+            riskControl.release(riskControl.rewards(), nft, tokenId);
         }
         _burn(tokenId);
     }

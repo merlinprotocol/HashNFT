@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./interfaces/IRiskControlv2.sol";
 import "./interfaces/IEarningsOracle.sol";
 import "./PaymentSplitter.sol";
-import "hardhat/console.sol";
 
 contract RiskControlv2 is AccessControl, IRiskControlv2 {
     using SafeMath for uint256;
@@ -269,6 +268,7 @@ contract RiskControlv2 is AccessControl, IRiskControlv2 {
      * @dev Deliver the tokens to the contract.
      */
     function deliver() public atStage(Status.ACTIVE) {
+        require(sold > 0, "RiskControl: hardrate zero sold");
         require(
             block.timestamp.sub(startTime).div(1 days) > 0,
             "RiskControl: deliver conditions not met"

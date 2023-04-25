@@ -2,30 +2,38 @@
 // Load dependencies
 
 const { expect } = require("chai");
-const { deployRiskControlv2, 
-  generateMerkleTree, 
+const { deployRiskControlv2,
+  generateMerkleTree,
   getBlockTimestamp,
-  setBlockTimestamp } = require("./testHelpers");
+  setBlockTimestamp,
+  deliverAll } = require("./testHelpers");
 
 describe("HashNFTv2", function () {
   let hashNFTv2;
   let svg;
   let riskControl;
+  let oracle;
   let deployer;
   let admin;
   let notAdmin;
   let issuer;
   let freeMintUser;
   let user;
+  let users;
   let merkleTree;
 
   let startAt;
   const duration = 3600 * 24 * 30;
+  const hashrates = [1000, 500, 1000, 1000];
   const supply = 4000;
   const price = ethers.utils.parseEther("0.001");
   const ratio = 3000;
   const freeMintSupply = 200;
   const whitelistLimit = 2;
+  const INACTIVE = 0;
+  const ACTIVE = 1;
+  const MATURED = 2;
+  const DEFAULTED = 3;
 
   async function freeMint(signer, count) {
     const balance = await ethers.provider.getBalance(hashNFTv2.address);
@@ -68,8 +76,9 @@ describe("HashNFTv2", function () {
   }
 
   beforeEach(async function () {
-    [deployer, tracker, issuer, freeMintUser, user, notAdmin] = await ethers.getSigners();
+    [deployer, tracker, issuer, freeMintUser, user, user1, user2, user3, user4, notAdmin] = await ethers.getSigners();
     admin = deployer;
+    users = [user1, user2, user3, user4];
     startAt = (Math.floor(await getBlockTimestamp() / 3600 / 24) + 1) * 3600 * 24;
 
     const NFTSVGContract = await ethers.getContractFactory("NFTSVG");
@@ -81,6 +90,8 @@ describe("HashNFTv2", function () {
         NFTSVG: svg.address,
       },
     });
+    const BitcoinEarningsOracleContract = await ethers.getContractFactory("BitcoinEarningsOracle");
+    oracle = await BitcoinEarningsOracleContract.attach(await riskControl.earningsOracle());
     hashNFTv2 = await HashNFTv2Contract.deploy(riskControl.address);
     await hashNFTv2.deployed();
     await hashNFTv2.setFreeMintSupply(freeMintSupply);
@@ -137,14 +148,14 @@ describe("HashNFTv2", function () {
       ).to.be.revertedWith('HashNFTv2: insufficient whitelist');
     });
 
-    // it('revert insufficient funds', async function () {
-    //   expect(await ethers.provider.getBalance(hashNFTv2.address)).to.equal(0);
-    //   const hashedAddress = ethers.utils.keccak256(freeMintUser.address);
-    //   let proof = merkleTree.getHexProof(hashedAddress);
-    //   await expect(
-    //     await hashNFTv2.connect(freeMintUser).freeMint(proof, freeMintUser.address)
-    //   ).to.be.revertedWith('HashNFTv2: insufficient funds');
-    // });
+    it('revert insufficient funds', async function () {
+      expect(await ethers.provider.getBalance(hashNFTv2.address)).to.equal(0);
+      const hashedAddress = ethers.utils.keccak256(freeMintUser.address);
+      let proof = merkleTree.getHexProof(hashedAddress);
+      await expect(
+        hashNFTv2.connect(freeMintUser).freeMint(proof, freeMintUser.address)
+      ).to.be.revertedWith('HashNFTv2: insufficient funds');
+    });
   });
 
   describe("Mint functionality", function () {
@@ -174,7 +185,7 @@ describe("HashNFTv2", function () {
   });
 
   describe("Withdraw functionality", function () {
-    it("should allow admin to withdraw", async function () {
+    it("should correctly Withdraw", async function () {
       // Add test cases for withdraw functionality
       await freeMint(freeMintUser, 2);
       const balance = await ethers.provider.getBalance(hashNFTv2.address);
@@ -191,6 +202,94 @@ describe("HashNFTv2", function () {
       await expect(
         hashNFTv2.connect(notAdmin).withdraw()
       ).to.be.revertedWith(revertMsg)
+    });
+  });
+
+  describe("Burn functionality", function () {
+    async function mockDeliver() {
+      for (let i = 0; i < hashrates.length; i++) {
+        const balance = price.mul(hashrates[i]);
+        await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
+      }
+      await deliverAll(riskControl, oracle, issuer, startAt);
+      await setBlockTimestamp(startAt + duration + 3600 * 24 + 1);
+      expect(await riskControl.currentStage()).to.equal(MATURED);
+    }
+
+    it("should correctly Burn", async function () {
+      await mockDeliver();
+
+      const tokenId = 0;
+      expect(await hashNFTv2.ownerOf(tokenId)).to.eq(users[tokenId].address);
+      const [_, earning] = await oracle.lastRound();
+      const amount = earning.mul(hashrates[tokenId]).mul(duration / 3600 / 24);
+      expect(await riskControl.rewardBalance(hashNFTv2.address, tokenId)).to.eq(amount);
+      await hashNFTv2.connect(users[tokenId]).burn(tokenId);
+      const ERC20Contract = await ethers.getContractFactory("MyERC20");
+      const wbtc = await ERC20Contract.attach(await riskControl.rewards());
+      expect(await wbtc.balanceOf(users[tokenId].address)).to.eq(amount);
+      await expect(
+        hashNFTv2.ownerOf(tokenId)
+      ).to.be.revertedWith('ERC721: owner query for nonexistent token');
+    });
+
+    it("should correctly Burn 2", async function () {
+      for (let i = 0; i < hashrates.length; i++) {
+        const balance = price.mul(hashrates[i]);
+        await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
+      }
+      const deliverTimer = 10;
+      const splitterAddr = await riskControl.splitter();
+      const result = await oracle.lastRound();
+      const rewardsAmount = (result[1]).mul(await riskControl.sold());
+      for (let i = 1; i <= deliverTimer; i++) {
+        await setBlockTimestamp(startAt + 24 * 3600 * i);
+        expect(await riskControl.currentStage()).to.equal(ACTIVE);
+        await expect(
+          riskControl.deliver()
+        ).to.emit(riskControl, 'Deliver')
+          .withArgs(issuer.address, splitterAddr, rewardsAmount);
+      }
+
+      await setBlockTimestamp(startAt + duration + 3600 * 24 + 1);
+      expect(await riskControl.currentStage()).to.equal(DEFAULTED);
+      const splitter = await riskControl.splitter();
+      expect(await ethers.provider.getBalance(splitter)).to.equal(0);
+      const liquidateAmount = await ethers.provider.getBalance(riskControl.address);
+      await expect(
+        riskControl.connect(admin).liquidate()
+      ).to.emit(riskControl, 'Liquidate')
+        .withArgs(splitter, liquidateAmount);
+
+      const tokenId = 0;
+      expect(await hashNFTv2.ownerOf(tokenId)).to.eq(users[tokenId].address);
+      const [_, earning] = await oracle.lastRound();
+      const amount = earning.mul(hashrates[tokenId]).mul(deliverTimer);
+      expect(await riskControl.rewardBalance(hashNFTv2.address, tokenId)).to.eq(amount);
+      // const balance = await ethers.provider.getBalance(users[tokenId].address);
+      // console.log(balance.toString());
+      const tx = await hashNFTv2.connect(users[tokenId]).burn(tokenId);
+      await tx.wait();
+      const ERC20Contract = await ethers.getContractFactory("MyERC20");
+      const wbtc = await ERC20Contract.attach(await riskControl.rewards());
+      expect(await wbtc.balanceOf(users[tokenId].address)).to.eq(amount);
+      const sum = hashrates.reduce((acc, curr) => acc + curr, 0);
+      // const value = liquidateAmount.mul(hashrates[tokenId]).div(sum);
+      // console.log(value.toString(), receipt.gasUsed.toString());
+      // console.log((await ethers.provider.getBalance(users[tokenId].address)).toString());
+      // expect(await ethers.provider.getBalance(users[tokenId].address)).to.eq(balance.add(value).add(receipt.gasUsed));
+      await expect(
+        hashNFTv2.ownerOf(tokenId)
+      ).to.be.revertedWith('ERC721: owner query for nonexistent token');
+    });
+
+    it("revert only owner", async function () {
+      await mockDeliver();
+
+      const tokenId = 0;
+      await expect(
+        hashNFTv2.connect(issuer).burn(tokenId)
+      ).to.be.revertedWith('HashNFTv2: only owner');
     });
   });
 

@@ -2,7 +2,7 @@
 // Load dependencies
 
 const { expect } = require("chai");
-const { deployRiskControlv2, getBlockTimestamp, setBlockTimestamp } = require("./testHelpers");
+const { deployRiskControlv2, getBlockTimestamp, setBlockTimestamp, deliverAll } = require("./testHelpers");
 
 describe("RiskControlv2", function () {
   let riskControl;
@@ -51,23 +51,6 @@ describe("RiskControlv2", function () {
       await hashNFTv2.connect(users[i]).mint(hashrates[i], users[i].address, { value: balance });
     }
   });
-
-  async function deliverAll() {
-    const deliverTimer = (await riskControl.duration()).div(3600 * 24);
-    const splitterAddr = await riskControl.splitter();
-    // const PaymentSplitterContract = await ethers.getContractFactory("PaymentSplitter");
-    // const splitter = PaymentSplitterContract.attach(splitterAddr);
-    const result = await oracle.lastRound();
-    const rewardsAmount = (result[1]).mul(await riskControl.sold());
-    for (let i = 1; i <= deliverTimer; i++) {
-      await setBlockTimestamp(startAt + 24 * 3600 * i);
-      expect(await riskControl.currentStage()).to.equal(ACTIVE);
-      await expect(
-        riskControl.deliver()
-      ).to.emit(riskControl, 'Deliver')
-        .withArgs(issuer.address, splitterAddr, rewardsAmount);
-    }
-  }
 
   async function claimInitialPayment() {
     await setBlockTimestamp(startAt);
@@ -119,7 +102,7 @@ describe("RiskControlv2", function () {
 
     it("should correctly Deliver for all duration", async function () {
       // Add test cases for free minting of tokens
-      await deliverAll();
+      await deliverAll(riskControl, oracle, issuer, startAt);
       await setBlockTimestamp(startAt + duration + 3600 * 24 + 1);
       expect(await riskControl.currentStage()).to.equal(MATURED);
     });
@@ -188,7 +171,7 @@ describe("RiskControlv2", function () {
 
   describe("Hashrate functionality", function () {
     it('should correctly Hashrate', async function () {
-      for (let tokenId = 0; tokenId < hashrates.length; tokenId ++) {
+      for (let tokenId = 0; tokenId < hashrates.length; tokenId++) {
         expect(await riskControl.hashrate(hashNFTv2.address, tokenId)).to.equal(hashrates[tokenId]);
       }
     });
@@ -271,7 +254,7 @@ describe("RiskControlv2", function () {
   describe("Withdraw functionality", function () {
     it('should correctly ClaimInitialPayment', async function () {
       await claimInitialPayment();
-      await deliverAll();
+      await deliverAll(riskControl, oracle, issuer, startAt);
       await setBlockTimestamp(startAt + 24 * 3600 + duration + 1);
       expect(await riskControl.currentStage()).to.equal(MATURED);
       await riskControl.connect(issuer).withdraw();
@@ -279,7 +262,7 @@ describe("RiskControlv2", function () {
     });
 
     it('revert initial payment not claimed', async function () {
-      await deliverAll();
+      await deliverAll(riskControl, oracle, issuer, startAt);
       await setBlockTimestamp(startAt + 24 * 3600 + duration + 1);
       await expect(
         riskControl.connect(issuer).withdraw()

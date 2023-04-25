@@ -1,4 +1,4 @@
-const { artifacts } = require("hardhat");
+const { expect } = require("chai");
 const { MerkleTree } = require("merkletreejs");
 
 async function deployRiskControlv2(deployer, tracker, issuer, price, supply, startTime, duration, ratio) {
@@ -62,10 +62,27 @@ async function getBlockTimestamp() {
   return block.timestamp;
 }
 
+async function deliverAll(riskControl, oracle, issuer, startTime) {
+  const deliverTimer = (await riskControl.duration()).div(3600 * 24);
+  const splitterAddr = await riskControl.splitter();
+  const result = await oracle.lastRound();
+  const rewardsAmount = (result[1]).mul(await riskControl.sold());
+  for (let i = 1; i <= deliverTimer; i++) {
+    await setBlockTimestamp(startTime + 24 * 3600 * i);
+    const ACTIVE = 1;
+    expect(await riskControl.currentStage()).to.equal(ACTIVE);
+    await expect(
+      riskControl.deliver()
+    ).to.emit(riskControl, 'Deliver')
+      .withArgs(issuer.address, splitterAddr, rewardsAmount);
+  }
+}
+
 module.exports = {
   deployRiskControlv2,
   deployBitcoinEarningsOracle,
   generateMerkleTree,
   getBlockTimestamp,
   setBlockTimestamp,
+  deliverAll,
 };
