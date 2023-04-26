@@ -146,7 +146,7 @@ contract HashNFTv2 is ERC721, AccessControl {
             );
             (, int256 price, , , ) = priceFeed
                 .latestRoundData();
-            uint256 price2 = uint256(price).div(10e6);
+            uint256 price2 = uint256(price).div(1000000);
             feedPrice = string(abi.encodePacked('btc/usd: ', price2.toFixed(2)));
         }
         NFTSVG.SVGParams memory svgParams = NFTSVG.SVGParams({
