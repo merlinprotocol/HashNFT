@@ -17,7 +17,8 @@ library NFTSVG {
         uint256 tokenId;
         uint256 rewards;
         uint256 hashrate;
-        string startTime;
+        string statu;
+        string price;
     }
 
     function generateMetadata(
@@ -62,13 +63,15 @@ library NFTSVG {
                 '<animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="45s" repeatCount="indefinite" /> </textPath> <textPath startOffset="-50%" fill="white" font-family="\'Courier New\', monospace" font-size="10px" xlink:href="#text-path-a">MerlinProtocol brings real-world assets into web3. <animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="45s"',
                 ' repeatCount="indefinite" /> </textPath> </text> <g mask="url(#fade-symbol)"> <rect fill="none" x="0px" y="0px" width="290px" height="200px" /> <text y="70px" x="32px" fill="white" font-family="\'Courier New\', monospace" font-weight="200" font-size="36px">HashNFT</text><text y="95px" x="35px" fill="white" font-family="\'Courier New\', monospace" font-weight="200" font-size="16px">Rewards: </text><text y="95px" x="115px" fill="white" font-family="\'Courier New\', monospace" font-weight="bold" font-size="16px">',
                 string(abi.encodePacked(Strings.toString(params.rewards))),
-                'sat</text> </g> <rect x="16" y="16" width="258" height="468" rx="20" ry="20" fill="rgba(0,0,0,0)" stroke="rgba(255,255,255,0.2)" /> <style> @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 1; } }',
+                'sat</text> <text y="120px" x="35px" fill="white" font-family="\'Courier New\', monospace" font-weight="400" font-size="12px">',
+                params.price,
+                '</text> </g> <rect x="16" y="16" width="258" height="468" rx="20" ry="20" fill="rgba(0,0,0,0)" stroke="rgba(255,255,255,0.2)" /> <style> @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 1; } }',
                 '#bitcoin { animation: blink 4s infinite; } </style> <g> <circle cx="145" cy="252" r="100" stroke="white" stroke-width="6" fill="none" /><text id="bitcoin" x="100" y="310" font-family="Arial, sans-serif" font-size="160" font-weight="bold" fill="white">',
                 BTC_SYMBOL,
                 '</text></g> <g style="transform:translate(29px, 384px)"> <rect width="120px" height="26px" rx="8px" ry="8px" fill="rgba(0,0,0,0.6)" /><text x="12px" y="17px" font-family="\'Courier New\', monospace" font-size="12px" fill="white"> <tspan fill="rgba(255,255,255,0.6)">Token ID: </tspan>',
                 string(abi.encodePacked(Strings.toString(params.tokenId))),
-                '</text> </g> <g style="transform:translate(29px, 414px)"> <rect width="160px" height="26px" rx="8px" ry="8px" fill="rgba(0,0,0,0.6)" /><text x="12px" y="17px" font-family="\'Courier New\', monospace" font-size="12px" fill="white"> <tspan fill="rgba(255,255,255,0.6)">StartAt: </tspan>',
-                params.startTime,
+                '</text> </g> <g style="transform:translate(29px, 414px)"> <rect width="160px" height="26px" rx="8px" ry="8px" fill="rgba(0,0,0,0.6)" /><text x="12px" y="17px" font-family="\'Courier New\', monospace" font-size="12px" fill="white"> <tspan fill="rgba(255,255,255,0.6)">Statu: </tspan>',
+                params.statu,
                 '</text> </g> <g style="transform:translate(29px, 444px)"> <rect width="160px" height="26px" rx="8px" ry="8px" fill="rgba(0,0,0,0.6)" /><text x="12px" y="17px" font-family="\'Courier New\', monospace" font-size="12px" fill="white"> <tspan fill="rgba(255,255,255,0.6)">Hashrate: </tspan>',
                 string(abi.encodePacked(Strings.toString(params.hashrate))),
                 ' TH/s </text> </g> </svg>'

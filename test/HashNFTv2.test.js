@@ -136,7 +136,7 @@ describe("HashNFTv2", function () {
       const amount = 1;
       const payAmount = price.mul(amount);
       await expect(
-        hashNFTv2.connect(whitelistUser).functions["mint(bytes32[],uint256,address)"](proof, amount, whitelistUser.address,  { value: payAmount })
+        hashNFTv2.connect(whitelistUser).functions["mint(bytes32[],uint256,address)"](proof, amount, whitelistUser.address, { value: payAmount })
       ).to.emit(hashNFTv2, 'Transfer')
         .withArgs(ethers.constants.AddressZero, whitelistUser.address, tokenId);
       expect(await hashNFTv2.ownerOf(tokenId)).to.equal(whitelistUser.address);
@@ -203,7 +203,33 @@ describe("HashNFTv2", function () {
 
   describe("TokenURI functionality", function () {
     it("should return correct tokenURI", async function () {
+      const writeSvg = false;
       // Add test cases for tokenURI functionality
+      const PriceOraceContract = await ethers.getContractFactory("MockAggregatorV3Interface");
+      const po = await PriceOraceContract.connect(deployer).deploy();
+      await po.deployed();
+      await hashNFTv2.connect(admin).setPriceFeedAddress(po.address);
+      expect(await hashNFTv2.priceFeedAddress()).to.eq(po.address);
+
+      await mint(user, [10]);
+      const tokenId = 0;
+      let metadata = await hashNFTv2.tokenURI(tokenId);
+      let regex = /^data:application\/json;base64,([\w\d+/]+=*)/i;
+      let match = metadata.match(regex);
+      let base64String = match[1];
+      let decodedData = Buffer.from(base64String, "base64");
+      const parsedJson = JSON.parse(decodedData);
+
+      metadata = parsedJson.image;
+      regex = /^data:image\/svg\+xml;base64,([\w\d+/]+=*)/i;
+      match = metadata.match(regex);
+      base64String = match[1];
+      decodedData = Buffer.from(base64String, "base64");
+      if (writeSvg) {
+        const outputPath = "hashnft.svg";
+        const fs = require("fs");
+        fs.writeFileSync(outputPath, decodedData);
+      }
     });
   });
 

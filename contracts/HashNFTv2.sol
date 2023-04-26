@@ -3,16 +3,19 @@
 
 pragma solidity ^0.8.0;
 
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./interfaces/IRiskControlv2.sol";
-import "./libraries//NFTSVG.sol";
+import "./libraries/Uint256ToString.sol";
+import "./libraries/NFTSVG.sol";
 
 contract HashNFTv2 is ERC721, AccessControl {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
+    using Uint256ToString for uint256;
 
     event Withdraw(address to, uint256 balance);
 
@@ -27,6 +30,8 @@ contract HashNFTv2 is ERC721, AccessControl {
     uint public whitelistLimit;
 
     IRiskControlv2 public riskControl;
+
+    address public priceFeedAddress;
 
     mapping(address => uint8) public whitelistBalance;
 
@@ -50,6 +55,12 @@ contract HashNFTv2 is ERC721, AccessControl {
         bytes32 whiteListRootHash_
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
         whiteListRootHash = whiteListRootHash_;
+    }
+
+    function setPriceFeedAddress(
+        address priceFeedAddress_
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        priceFeedAddress = priceFeedAddress_;
     }
 
     function setWhitelistSupply(
@@ -97,7 +108,11 @@ contract HashNFTv2 is ERC721, AccessControl {
         _counter.increment();
         whitelistBalance[to] = whitelistBalance[to] + 1;
         whitelistMinted += 1;
-        riskControl.bind{value: amount.mul(riskControl.price())}(address(this), tokenId, amount);
+        riskControl.bind{value: amount.mul(riskControl.price())}(
+            address(this),
+            tokenId,
+            amount
+        );
         return tokenId;
     }
 
@@ -122,12 +137,25 @@ contract HashNFTv2 is ERC721, AccessControl {
         uint256 tokenId
     ) public view virtual override returns (string memory metadata) {
         require(_exists(tokenId), "HashNFTv2: URI query for nonexistent token");
+        string memory feedPrice;
+        if (priceFeedAddress == address(0)) {
+            feedPrice = "btc/usd: unknow";
+        } else {
+            AggregatorV3Interface priceFeed = AggregatorV3Interface(
+                priceFeedAddress
+            );
+            (, int256 price, , , ) = priceFeed
+                .latestRoundData();
+            uint256 price2 = uint256(price).div(10e6);
+            feedPrice = string(abi.encodePacked('btc/usd: ', price2.toFixed(2)));
+        }
         NFTSVG.SVGParams memory svgParams = NFTSVG.SVGParams({
             owner: ownerOf(tokenId),
             tokenId: tokenId,
             hashrate: riskControl.hashrate(address(this), tokenId),
             rewards: riskControl.rewardBalance(address(this), tokenId),
-            startTime: ""
+            statu: _statusToString(riskControl.currentStage()),
+            price: feedPrice
         });
         metadata = NFTSVG.generateMetadata(svgParams);
     }
@@ -155,5 +183,21 @@ contract HashNFTv2 is ERC721, AccessControl {
             riskControl.release(riskControl.rewards(), nft, tokenId);
         }
         _burn(tokenId);
+    }
+
+    function _statusToString(
+        IRiskControlv2.Status status
+    ) private pure returns (string memory) {
+        if (status == IRiskControlv2.Status.INACTIVE) {
+            return "Inactive";
+        } else if (status == IRiskControlv2.Status.ACTIVE) {
+            return "Active";
+        } else if (status == IRiskControlv2.Status.MATURED) {
+            return "Matured";
+        } else if (status == IRiskControlv2.Status.DEFAULTED) {
+            return "Defaulted";
+        } else {
+            revert("Invalid status");
+        }
     }
 }
