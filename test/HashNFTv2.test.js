@@ -187,6 +187,16 @@ describe("HashNFTv2", function () {
       await mint(user, [10]);
     });
 
+    it('revert balanceOf is not zero', async function () {
+      await mint(user, [10]);
+      const amount = 10;
+      const balance = (await riskControl.price()).mul(amount);
+      expect(await hashNFTv2.balanceOf(user.address)).to.equal(1);
+      await expect(
+        hashNFTv2.connect(user).functions["mint(uint256,address)"](amount, user.address, { value: balance })
+      ).to.be.revertedWith('HashNFTv2: balanceOf not zero');
+    });
+
     it('revert mint not allow', async function () {
       await setBlockTimestamp(startAt);
       await expect(
@@ -195,8 +205,9 @@ describe("HashNFTv2", function () {
     });
 
     it('revert insufficient hashrate', async function () {
+      await mint(user, [(await riskControl.supply())]);
       await expect(
-        mint(user, [(await riskControl.supply()), 1])
+        mint(user2, [1])
       ).to.be.revertedWith('HashNFTv2: insufficient hashrate');
     });
   });

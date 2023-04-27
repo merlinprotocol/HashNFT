@@ -119,6 +119,7 @@ contract HashNFTv2 is ERC721, AccessControl {
     function mint(uint256 amount, address to) public payable returns (uint256) {
         require(to != address(0), "HashNFTv2: zero address");
         require(riskControl.mintAllowed(), "HashNFTv2: mint not allow");
+        require(0 == balanceOf(to), "HashNFTv2: balanceOf not zero");
         require(
             amount.add(riskControl.sold()) <= riskControl.supply(),
             "HashNFTv2: insufficient hashrate"

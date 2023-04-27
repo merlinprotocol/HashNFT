@@ -141,6 +141,12 @@ describe("RiskControlv2", function () {
       await bind(amount, user1, tokenId);
     });
 
+    it('should correctly Bind 2', async function () {
+      const amount = (await riskControl.supply()).sub(await riskControl.sold()).div(2);
+      const tokenId = 0;
+      await bind(amount, user1, tokenId);
+    });
+
     it('revert insufficient hashrates', async function () {
       const amount = (await riskControl.supply()).sub(await riskControl.sold()).add(1);
       const tokenId = 0;
