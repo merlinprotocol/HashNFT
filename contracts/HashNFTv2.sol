@@ -170,7 +170,9 @@ contract HashNFTv2 is ERC721, AccessControl {
     }
 
     function burn(uint256 tokenId) external payable {
+        require(_exists(tokenId), "HashNFTv2: burn for nonexistent token");
         require(msg.sender == ownerOf(tokenId), "HashNFTv2: only owner");
+        require(getApproved(tokenId) == address(0), "HashNFTv2: tokenId has been approved");
         require(
             riskControl.currentStage() == IRiskControlv2.Status.MATURED ||
                 riskControl.currentStage() == IRiskControlv2.Status.DEFAULTED,

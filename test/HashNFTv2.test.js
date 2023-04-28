@@ -351,6 +351,26 @@ describe("HashNFTv2", function () {
         hashNFTv2.connect(issuer).burn(tokenId)
       ).to.be.revertedWith('HashNFTv2: only owner');
     });
+
+    it("revert tokenId has been approved", async function () {
+      await mockDeliver();
+
+      const tokenId = 0;
+      const signer = users[tokenId];
+      expect(await hashNFTv2.ownerOf(tokenId)).to.eq(signer.address);
+      await hashNFTv2.connect(signer).approve( notAdmin.address, tokenId);
+      expect(await hashNFTv2.getApproved(tokenId)).to.eq(notAdmin.address);
+      await expect(
+        hashNFTv2.connect(signer).burn(tokenId)
+      ).to.be.revertedWith('HashNFTv2: tokenId has been approved');
+
+      await hashNFTv2.connect(signer).approve( ethers.constants.AddressZero, tokenId);
+      await hashNFTv2.connect(signer).burn(tokenId);
+      await expect(
+        hashNFTv2.ownerOf(tokenId)
+      ).to.be.revertedWith('ERC721: owner query for nonexistent token');
+    });
+
   });
 
   // Add any additional describe blocks and test cases as needed
