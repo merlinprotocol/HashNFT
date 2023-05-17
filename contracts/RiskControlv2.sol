@@ -227,7 +227,7 @@ contract RiskControlv2 is AccessControl, IRiskControlv2 {
                 currentStage() == Status.DEFAULTED,
             "RiskControl: statu not in MATURED or DEFAULTED"
         );
-        require(msg.sender == nft, "RiskControl: not auth");
+        require(msg.sender == IERC721(nft).ownerOf(tokenId), "RiskControl: not auth");
         splitter.release(token, nft, tokenId);
     }
 
